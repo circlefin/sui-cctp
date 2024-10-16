@@ -9,7 +9,6 @@
 # evidence any actual or intended publication of such source code. Disclosure
 # of this source code or any related proprietary information is strictly
 # prohibited without the express written permission of Circle Internet Financial
-# prohibited without the express written permission of Circle Internet Financial
 # Trading Company Limited.
 #
 
