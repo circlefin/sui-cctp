@@ -55,13 +55,11 @@ jobs:
     needs: 
       - run_token_messenger_tests
       - run_message_transmitter_tests
-      - run_e2e_tests
     if: github.event_name == 'pull_request'
     uses: circlefin/circle-public-github-workflows/.github/workflows/pr-scan.yaml@v1
   release-sbom:
       needs:
         - run_token_messenger_tests
         - run_message_transmitter_tests
-        - run_e2e_tests
       if: github.event_name == 'push'
       uses: circlefin/circle-public-github-workflows/.github/workflows/attach-release-assets.yaml@v1
