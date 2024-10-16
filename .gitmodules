@@ -1,0 +1,6 @@
+[submodule "stablecoin-sui"]
+	path = stablecoin-sui
+	url = https://github.com/circlefin/stablecoin-sui.git
+[submodule "evm-cctp-contracts"]
+	path = evm-cctp-contracts
+	url = https://github.com/circlefin/evm-cctp-contracts.git
