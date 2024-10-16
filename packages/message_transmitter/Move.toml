@@ -25,10 +25,12 @@ subdir = "crates/sui-framework/packages/sui-framework"
 rev = "a4185da5659d8d299d34e1bb2515ff1f7e32a20a"
 
 [dependencies.sui_extensions]
-local = "../../stablecoin-sui/packages/sui_extensions"
+git = "https://github.com/circlefin/stablecoin-sui.git"
+subdir = "packages/sui_extensions"
+rev = "8aca6be"
 
 [addresses]
-message_transmitter = "0x0"
+message_transmitter = "0x1"
 
 [dev-dependencies]
 

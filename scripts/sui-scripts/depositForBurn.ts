@@ -39,7 +39,7 @@ const tokenMessengerMinterId = process.env.SUI_TOKEN_MESSENGER_MINTER_ID as stri
 const tokenMessengerMinterStateId = process.env.SUI_TOKEN_MESSENGER_MINTER_STATE_ID as string;
 const usdcId = process.env.SUI_USDC_ID as string;
 const treasuryId = process.env.SUI_TREASURY_ID as string;
-const suiPrivateKey = "suiprivkey1qpwtyu8s5zfn0egjdqz843qjv6w83cklsxyjjqtxjwlyt39h4k3hcwxgerk";//process.env.SUI_DEPLOYER_KEY as string;
+const suiPrivateKey = process.env.SUI_DEPLOYER_KEY as string;
 const signer = getEd25519KeypairFromPrivateKey(suiPrivateKey);
 
 const FULLNODE_PORT = process.env.FULLNODE_PORT ?? "7000";
@@ -105,7 +105,6 @@ const main = async () => {
     ],
     typeArguments: [`${usdcId}::usdc::USDC`],
   });
-  depositForBurnTx.setGasBudget(1000000000);
 
   // Broadcast the transaction
   console.log("Broadcasting sui deposit_for_burn tx...");

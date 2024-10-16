@@ -28,13 +28,18 @@ rev = "a4185da5659d8d299d34e1bb2515ff1f7e32a20a"
 local = "../message_transmitter"
 
 [dependencies.stablecoin]
-local = "../../stablecoin-sui/packages/stablecoin"
+git = "https://github.com/circlefin/stablecoin-sui.git"
+subdir = "packages/stablecoin"
+rev = "8aca6be"
 
 [dependencies.sui_extensions]
-local = "../../stablecoin-sui/packages/sui_extensions"
+git = "https://github.com/circlefin/stablecoin-sui.git"
+subdir = "packages/sui_extensions"
+rev = "8aca6be"
 
 [addresses]
-token_messenger_minter = "0x0"
+message_transmitter = "0x1"
+token_messenger_minter = "0x2"
 
 [dev-dependencies]
 

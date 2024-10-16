@@ -207,6 +207,21 @@ module token_messenger_minter::state {
     #[test_only] use token_messenger_minter::state::{Self};
 
     #[test_only]
+    public fun new_for_testing(message_body_version: u32, caller: address, ctx: &mut TxContext): State {
+        State {
+            id: object::new(ctx),
+            roles: roles::new(caller, caller, caller, ctx),
+            remote_token_messengers: table::new(ctx),
+            burn_limits_per_message: table::new(ctx),
+            remote_tokens_to_local_tokens: table::new(ctx),
+            mint_caps: bag::new(ctx),
+            paused: false,
+            message_body_version,
+            compatible_versions: vec_set::singleton(version_control::current_version())
+        }
+    }
+
+    #[test_only]
     public struct TestCap has store, key {
       id: UID,
       address: address

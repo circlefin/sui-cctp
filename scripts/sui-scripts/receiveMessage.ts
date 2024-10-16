@@ -94,7 +94,7 @@ const main = async () => {
     evmTokenMessengerAddress,
     evmUsdcAddress,
     evmUserAddress,
-    "0xf6152a5005ff4c7bcb25021a12a988073970b9e2f12e68c54957e8baacb9b8b4",
+    signer.toSuiAddress(),
     8,
     USDC_AMOUNT
   )

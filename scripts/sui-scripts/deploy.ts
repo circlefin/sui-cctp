@@ -26,9 +26,6 @@ import { execSync } from "child_process";
 import { keccak256 } from "ethereumjs-util";
 import { writeFile } from "fs";
 import dotenv from "dotenv";
-// import { DENY_LIST_OBJECT_ID } from '../../stablecoin-sui/typescript/scripts/helpers/index';
-
-const DENY_LIST_OBJECT_ID = "0x403";
 
 import {
   callViewFunction,
@@ -90,10 +87,6 @@ export async function deploySuiContracts(): Promise<void> {
     host: suiFaucetUrl,
     recipient: deployerKeypair.toSuiAddress(),
   });
-  await requestSuiFromFaucetV0({
-    host: suiFaucetUrl,
-    recipient: "0xf6152a5005ff4c7bcb25021a12a988073970b9e2f12e68c54957e8baacb9b8b4",
-  });
 
   await deployUSDCContracts();
   log("Deployed USDC packages");
@@ -103,26 +96,6 @@ export async function deploySuiContracts(): Promise<void> {
 
   await configureCCTPContracts(deployerKeypair);
   log("Configured CCTP packages");
-
-  const blocklistAddress = "0xf6152a5005ff4c7bcb25021a12a988073970b9e2f12e68c54957e8baacb9b8b4";
-  log("blocklisting address", blocklistAddress);
-
-  const btx = new Transaction();
-  btx.moveCall({
-    target: `${stablecoinPackageId}::treasury::blocklist`,
-    arguments: [
-      btx.object(usdcTreasuryId),
-      btx.object(DENY_LIST_OBJECT_ID),
-      btx.pure.address(blocklistAddress),
-    ],
-    typeArguments: [`${usdcPackageId}::usdc::USDC`],
-  });
-  const btxOutput = await executeTransactionHelper({
-    client,
-    signer: deployerKeypair,
-    transaction: btx,
-  });
-  console.log(btxOutput);
 
   // Link EVM contracts to Sui. Can be skipped via environment variable if needed.
   if (process.env.LINK_EVM_CONTRACTS === "true") {
@@ -405,18 +378,6 @@ export async function configureCCTPContracts(
       mintFundsTx.object("0x403"), // fixed denyList address
       mintFundsTx.pure.u64(10000), // amount
       mintFundsTx.pure.address(deployerKey.toSuiAddress()) // recipient
-    ],
-    typeArguments: [`${usdcPackageId}::usdc::USDC`],
-  })
-
-  mintFundsTx.moveCall({
-    target: `${stablecoinPackageId}::treasury::mint`,
-    arguments: [
-      mintFundsTx.object(usdcTreasuryId), // USDC treasury object
-      mintFundsTx.object(mintCapObjectId), // mint cap
-      mintFundsTx.object("0x403"), // fixed denyList address
-      mintFundsTx.pure.u64(10000), // amount
-      mintFundsTx.pure.address("0xf6152a5005ff4c7bcb25021a12a988073970b9e2f12e68c54957e8baacb9b8b4") // recipient
     ],
     typeArguments: [`${usdcPackageId}::usdc::USDC`],
   })
