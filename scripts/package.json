@@ -1,0 +1,59 @@
+{
+  "name": "sui-cctp",
+  "version": "1.0.0",
+  "description": "Circle's CCTP Smart Contracts on Sui blockchain",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/circlefin/sui-cctp.git"
+  },
+  "license": "Apache-2.0",
+  "scripts": {
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "deploy": "TS_NODE_COMPILER_OPTIONS='{\"module\": \"commonjs\" }' node -r ts-node/register -r dotenv/config 'sui-scripts/deploy.ts'",
+    "deploy-local": "FULLNODE_PORT=7000 FAUCET_PORT=7123 LINK_EVM_CONTRACTS=true && yarn deploy",
+    "deploy-ci": "FULLNODE_PORT=9000 FAUCET_PORT=9123 LINK_EVM_CONTRACTS=true && yarn deploy",
+    "deploy-skip-linking-local": "FULLNODE_PORT=7000 FAUCET_PORT=7123 LINK_EVM_CONTRACTS=false && yarn deploy",
+    "deploy-skip-linking-ci": "FULLNODE_PORT=9000 FAUCET_PORT=9123 LINK_EVM_CONTRACTS=false && yarn deploy",
+    "test": "yarn jest --runInBand",
+    "test-local": "FULLNODE_PORT=7000 FAUCET_PORT=7123 && yarn test",
+    "test-ci": "FULLNODE_PORT=9000 FAUCET_PORT=9123 && yarn test",
+    "deposit-for-burn-example": "TS_NODE_COMPILER_OPTIONS='{\"module\": \"commonjs\" }' node -r ts-node/register -r dotenv/config 'sui-scripts/depositForBurn.ts'",
+    "receive-message-example": "TS_NODE_COMPILER_OPTIONS='{\"module\": \"commonjs\" }' node -r ts-node/register -r dotenv/config 'sui-scripts/receiveMessage.ts'"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.1.0",
+    "@eslint/js": "^9.7.0",
+    "@jest/globals": "^29.7.0",
+    "@mysten/sui": "^1.0.3",
+    "@types/chai": "^4.3.16",
+    "@types/jest": "^29.5.12",
+    "@types/lodash": "^4.17.7",
+    "@types/mocha": "^10.0.6",
+    "@types/node": "^20.12.13",
+    "@typescript-eslint/eslint-plugin": "^7.11.0",
+    "@typescript-eslint/parser": "^7.17.0",
+    "chai": "^5.1.1",
+    "commander": "^12.1.0",
+    "dotenv": "^16.4.5",
+    "eslint": "^9.8.0",
+    "ethereumjs-util": "^7.1.5",
+    "globals": "^15.8.0",
+    "jest": "^29.7.0",
+    "jest-junit": "^16.0.0",
+    "lodash": "^4.17.21",
+    "mocha": "^10.4.0",
+    "prettier": "^3.2.5",
+    "prettier-eslint": "^16.3.0",
+    "ts-jest": "^29.2.4",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5",
+    "wait-for-expect": "^3.0.2",
+    "web3": "^4.11.1"
+  },
+  "engines": {
+    "node": "20.14.0"
+  },
+  "packageManager": "yarn@3.2.2"
+}
