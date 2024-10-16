@@ -51,12 +51,12 @@ jobs:
         coverage=$(sui move coverage summary --path packages/message_transmitter | grep "Move Coverage:" | grep -Eo "[0-9]+" | head -1)
         [[ $coverage -ge 99 ]] || { echo "Test Coverage is only ${coverage}%. Should be at least 99%"; exit 1; }
       runner: small-spot
-  # scan:
-  #   needs: 
-  #     - run_token_messenger_tests
-  #     - run_message_transmitter_tests
-  #   if: github.event_name == 'pull_request'
-  #   uses: circlefin/circle-public-github-workflows/.github/workflows/pr-scan.yaml@v1
+  scan:
+    needs: 
+      - run_token_messenger_tests
+      - run_message_transmitter_tests
+    if: github.event_name == 'pull_request'
+    uses: circlefin/circle-public-github-workflows/.github/workflows/pr-scan.yaml@v1
   release-sbom:
       needs:
         - run_token_messenger_tests
