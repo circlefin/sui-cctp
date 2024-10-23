@@ -49,6 +49,7 @@ let tmmPackageId: string;
 let tmmStateId: string;
 let usdcTokenId: string;
 let usdcFundsObjectId: string;
+let mintCapObjectId: string;
 let suiExtensionsPackageId: string;
 let messageTransmitterUpgradeServiceId: string;
 let tokenMessengerUpgradeServiceId: string;
@@ -109,7 +110,7 @@ export async function deploySuiContracts(): Promise<void> {
     execSync(`~/.foundry/bin/cast send ${process.env.EVM_TOKEN_MESSENGER_ADDRESS} "function addRemoteTokenMessenger(uint32 domain,bytes32 tokenMessenger)" 8 ${recipientAddress} --rpc-url ${process.env.EVM_RPC_URL} --private-key ${process.env.EVM_TOKEN_MESSENGER_DEPLOYER_KEY}`);
   }
 
-  // Export deployment output to sui_deployment.env
+  // Export deployment output to test_config.env
   const deploymentConfig = 
     `
     SUI_MESSAGE_TRANSMITTER_ID=${mtPackageId}
@@ -123,6 +124,7 @@ export async function deploySuiContracts(): Promise<void> {
     SUI_TREASURY_ID=${usdcTreasuryId}
     SUI_EXTENSIONS_ID=${suiExtensionsPackageId}
     SUI_STABLECOIN_ID=${stablecoinPackageId}
+    SUI_MINT_CAP_ID=${mintCapObjectId}
     SUI_DEPLOYER_KEY=${deployerKeypair.getSecretKey()}
     `
 
@@ -361,7 +363,7 @@ export async function configureCCTPContracts(
   });
 
   // Mint starter funds to the deployer address
-  const mintCapObjectId = recoverChangedObjectId(
+  mintCapObjectId = recoverChangedObjectId(
     configureNewControllerTxOutput,
     "created",
     "treasury::MintCap",
