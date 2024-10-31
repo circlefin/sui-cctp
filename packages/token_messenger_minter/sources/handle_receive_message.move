@@ -215,8 +215,7 @@ module token_messenger_minter::handle_receive_message_tests {
         deny_list::{Self, DenyList},
         event::{num_events},
         test_scenario::{Self, Scenario},
-        test_utils::{Self, assert_eq},
-        vec_set
+        test_utils::{Self, assert_eq}
     };
     use stablecoin::treasury::{Self, Treasury, MintCap};
     use token_messenger_minter::{

@@ -88,27 +88,6 @@ module token_messenger_minter::burn_message {
 
   // === Public Functions ===
 
-  // Creates a new `BurnMessage` object from given parameters.
-  public fun new(version: u32, burn_token: address, mint_recipient: address, amount: u256, message_sender: address): BurnMessage {
-    BurnMessage {
-      version, burn_token, mint_recipient, amount, message_sender
-    }
-  }
-
-  /// Creates a new `BurnMessage` object from bytes.
-  /// Validates the message first.
-  public fun from_bytes(message_bytes: &vector<u8>): BurnMessage {
-    validate_raw_message(message_bytes);
-    
-    BurnMessage {
-      version: deserialize_u32_be(message_bytes, VERSION_INDEX, VERSION_LEN),
-      burn_token: deserialize_address(message_bytes, BURN_TOKEN_INDEX, BURN_TOKEN_LEN),
-      mint_recipient: deserialize_address(message_bytes, MINT_RECIPIENT_INDEX, MINT_RECIPIENT_LEN),
-      amount: deserialize_u256_be(message_bytes, AMOUNT_INDEX, AMOUNT_LEN),
-      message_sender: deserialize_address(message_bytes, MESSAGE_SENDER_INDEX, MESSAGE_SENDER_LEN),
-    }
-  }
-
   /// Serializes a given `BurnMessage` into the CCTP message format in bytes.
   public fun serialize(message: &BurnMessage): vector<u8> {
     let BurnMessage {
@@ -131,6 +110,29 @@ module token_messenger_minter::burn_message {
 
   // === Public-Package Functions ===
 
+  /// Creates a new `BurnMessage` object from given parameters.
+  /// Has public(package) visibility so integrators can trust it when returned.
+  public(package) fun new(version: u32, burn_token: address, mint_recipient: address, amount: u256, message_sender: address): BurnMessage {
+    BurnMessage {
+      version, burn_token, mint_recipient, amount, message_sender
+    }
+  }
+
+  /// Creates a new `BurnMessage` object from bytes.
+  /// Validates the message first.
+  /// Has public(package) visibility so integrators can trust it when returned.
+  public(package) fun from_bytes(message_bytes: &vector<u8>): BurnMessage {
+    validate_raw_message(message_bytes);
+    
+    BurnMessage {
+      version: deserialize_u32_be(message_bytes, VERSION_INDEX, VERSION_LEN),
+      burn_token: deserialize_address(message_bytes, BURN_TOKEN_INDEX, BURN_TOKEN_LEN),
+      mint_recipient: deserialize_address(message_bytes, MINT_RECIPIENT_INDEX, MINT_RECIPIENT_LEN),
+      amount: deserialize_u256_be(message_bytes, AMOUNT_INDEX, AMOUNT_LEN),
+      message_sender: deserialize_address(message_bytes, MESSAGE_SENDER_INDEX, MESSAGE_SENDER_LEN),
+    }
+  }
+
   public(package) fun update_mint_recipient(
     burn_message: &mut BurnMessage, new_mint_recipient: address
   ) {
@@ -150,6 +152,16 @@ module token_messenger_minter::burn_message {
   }
 
   // === Test Functions ===
+
+  #[test_only]
+  public fun new_for_testing(version: u32, burn_token: address, mint_recipient: address, amount: u256, message_sender: address): BurnMessage {
+    new(version, burn_token, mint_recipient, amount, message_sender)
+  }
+
+  #[test_only]
+  public(package) fun from_bytes_for_testing(message_bytes: &vector<u8>): BurnMessage {
+    from_bytes(message_bytes)
+  }
 
   // Following test message is based on ->
   // ETH (Source): https://sepolia.etherscan.io/tx/0x151c196be83e2fcbd84204a521ee0a758a5e7335ac7d2c0958ef840fd485dc61

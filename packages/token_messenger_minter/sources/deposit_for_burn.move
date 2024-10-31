@@ -19,12 +19,10 @@
 /// Module: deposit_for_burn
 /// Contains public methods for sending cross-chain USDC transfers.
 /// 
-/// Note on upgrades: It is recommended to call all of these public 
-/// methods from PTBs rather than directly from other packages. 
-/// These functions are version gated, so if the package is upgraded, 
-/// the upgraded package must be called. In most cases, we will provide 
-/// a migration period where both package versions are callable for a
-/// period of time to avoid breaking all callers immediately.
+/// Note on upgrades: If interacting with this module from other packages, it
+/// is recommended to call the _with_package_auth methods from PTBs rather than 
+/// directly from dependent packages. These functions are version gated, so if 
+/// the package is upgraded, the upgraded package must be called. 
 module token_messenger_minter::deposit_for_burn {
 
   // === Imports ===
@@ -36,7 +34,12 @@ module token_messenger_minter::deposit_for_burn {
   use stablecoin::{treasury::{Self, MintCap, Treasury}};
   use message_transmitter::{
     message::{Self, Message},
-    send_message::{replace_message, send_message, send_message_with_caller},
+    send_message::{
+      auth_caller_identifier,
+      replace_message, 
+      send_message, 
+      send_message_with_caller
+    },
     state::{State as MessageTransmitterState}
   };
   use token_messenger_minter::{
@@ -73,6 +76,9 @@ module token_messenger_minter::deposit_for_burn {
 
   /// Burns tokens to be minted on destination domain and sends a
   /// message through the MessageTransmitter package. 
+  /// Intended to be called directly by EOA (rather than a dependent package).
+  /// The initiating EOA will be the "owner" (e.g. message sender) of the message and
+  /// have the ability to call replace_deposit_for_burn.
   /// 
   /// Reverts if:
   /// - given burn token T is not supported
@@ -90,10 +96,11 @@ module token_messenger_minter::deposit_for_burn {
   ///                   Note: If destination is a non-Move chain, mint_recipient 
   ///                   address should be converted to hex and passed in in the 
   ///                   @0x123 address format.
+  /// - state: State shared object for the TokenMessengerMinter package.
   /// - deny_list: DenyList shared object for the stablecoin token T.
   /// - treasury: Treasury shared object for the stablecoin token T.
   /// - ctx: TxContext for the tx
-  public fun deposit_for_burn<T: drop>(
+  entry fun deposit_for_burn<T: drop>(
     coins: Coin<T>, 
     destination_domain: u32, 
     mint_recipient: address, 
@@ -103,14 +110,59 @@ module token_messenger_minter::deposit_for_burn {
     treasury: &mut Treasury<T>,
     ctx: &TxContext
   ): (BurnMessage, Message) {
+    let message_sender = ctx.sender();
     deposit_for_burn_shared(
-      coins, destination_domain, mint_recipient, @0x0, 
+      coins, destination_domain, mint_recipient, @0x0, message_sender,
+      state, message_transmitter_state, deny_list, treasury, ctx
+    )
+  }
+
+  /// Burns tokens to be minted on destination domain and sends a
+  /// message through the MessageTransmitter package. 
+  /// Intended to be called with Auth struct from a dependent package. The calling package 
+  /// will be the "owner" (e.g. message_sender) of the message and have the ability to call replace_deposit_for_burn_with_package_auth.
+  /// Direct callers (where EOAs should be the owner) should use deposit_for_burn instead.
+  /// 
+  /// This function uses a DepositForBurnTicket for parameters so that the calling package can 
+  /// call create_deposit_for_burn_ticket (not version-gated) from their package with parameters, and call 
+  /// deposit_for_burn_with_package_auth (version-gated) from a PTB so packages don't have to be updated
+  /// during CCTP package upgrades. DepositForBurnTicket also requires an Auth parameter. This is required to 
+  /// securely assign a sender address associated with the calling contract to the message.
+  /// Any struct that implements the drop trait can be used as an authenticator, but it is recommended to 
+  /// use a dedicated auth struct. Calling contracts should be careful to not expose these objects to the 
+  /// public or else messages from their package could be replaced.
+  /// 
+  /// Parameters:
+  /// - deposit_for_burn_ticket: Struct containing parameters and authenticator struct. 
+  /// - deny_list: DenyList shared object for the stablecoin token T.
+  /// - treasury: Treasury shared object for the stablecoin token T.
+  /// - ctx: TxContext for the tx
+  public fun deposit_for_burn_with_package_auth<T: drop, Auth: drop>(
+    deposit_for_burn_ticket: DepositForBurnTicket<T, Auth>,
+    state: &State,
+    message_transmitter_state: &mut MessageTransmitterState,
+    deny_list: &DenyList,
+    treasury: &mut Treasury<T>,
+    ctx: &TxContext
+  ): (BurnMessage, Message) {
+    let DepositForBurnTicket { 
+      auth: _auth, 
+      coins, 
+      destination_domain, 
+      mint_recipient 
+    } = deposit_for_burn_ticket;
+
+    // Since this is called from another package, message_sender is the auth caller identifier from the given auth struct.
+    let message_sender = auth_caller_identifier<Auth>();
+    deposit_for_burn_shared(
+      coins, destination_domain, mint_recipient, @0x0, message_sender,
       state, message_transmitter_state, deny_list, treasury, ctx
     )
   }
 
   /// Same as deposit_for_burn, except the receive_message call on the destination 
   /// domain must be called by `destination_caller`.
+  /// Intended to be called directly by EOA (rather than a dependent package).
   /// 
   /// WARNING: if the `destination_caller` does not represent a valid address, then 
   /// it will not be possible to broadcast the message on the destination domain. 
@@ -119,7 +171,7 @@ module token_messenger_minter::deposit_for_burn {
   /// 
   /// Note: If destination is a non-Move chain, destination_caller address should 
   /// be converted to hex and passed in in the @0x123 address format.
-  public fun deposit_for_burn_with_caller<T: drop>(
+  entry fun deposit_for_burn_with_caller<T: drop>(
     coins: Coin<T>, 
     destination_domain: u32, 
     mint_recipient: address, 
@@ -131,7 +183,48 @@ module token_messenger_minter::deposit_for_burn {
     ctx: &TxContext
   ): (BurnMessage, Message) {
     deposit_for_burn_shared(
-      coins, destination_domain, mint_recipient, destination_caller, 
+      coins, destination_domain, mint_recipient, destination_caller, ctx.sender(), 
+      state, message_transmitter_state, deny_list, treasury, ctx
+    )
+  }
+
+  /// Same as deposit_for_burn, except the receive_message call on the destination 
+  /// domain must be called by `destination_caller`.
+  /// Intended to be called from a dependent package. The calling package 
+  /// will be the "owner" of the message and be able to call replace_deposit_for_burn.
+  /// Direct EOA (non-package) callers should use deposit_for_burn_with_caller instead.
+  /// 
+  /// This function uses a DepositForBurnWithCallerTicket for parameters so that the calling package can 
+  /// call create_deposit_for_burn_with_caller_ticket (not version-gated) from their package, and call 
+  /// deposit_for_burn_with_caller_with_package_auth (version-gated) from a PTB so packages don't have to be updated
+  /// during upgrades.
+  /// 
+  /// WARNING: if the `destination_caller` does not represent a valid address, then 
+  /// it will not be possible to broadcast the message on the destination domain. 
+  /// This is an advanced feature, and the standard deposit_for_burn() should be 
+  /// preferred for use cases where a specific destination caller is not required.
+  /// 
+  /// Note: If destination is a non-Move chain, destination_caller address should 
+  /// be converted to hex and passed in in the @0x123 address format.
+  public fun deposit_for_burn_with_caller_with_package_auth<T: drop, Auth: drop>(
+    deposit_for_burn_with_caller_ticket: DepositForBurnWithCallerTicket<T, Auth>,
+    state: &State,
+    message_transmitter_state: &mut MessageTransmitterState,
+    deny_list: &DenyList,
+    treasury: &mut Treasury<T>,
+    ctx: &TxContext
+  ): (BurnMessage, Message) {
+    let DepositForBurnWithCallerTicket { 
+      auth: _auth, 
+      coins, 
+      destination_domain, 
+      mint_recipient ,
+      destination_caller
+    } = deposit_for_burn_with_caller_ticket;
+
+    let sender_identifier = auth_caller_identifier<Auth>();
+    deposit_for_burn_shared(
+      coins, destination_domain, mint_recipient, destination_caller, sender_identifier,
       state, message_transmitter_state, deny_list, treasury, ctx
     )
   }
@@ -157,9 +250,6 @@ module token_messenger_minter::deposit_for_burn {
   /// - new_destination_caller: new destination caller for message, can be @0x0 for no caller, 
   ///                           defaults to destination_caller of original_message.
   /// - new_mint_recipient: new mint recipient for the message, defaults to mint_recipient of original_message..
-  /// 
-  /// Note: The sender of the replaced message must be the same as the sender of the original message.
-  ///       On EVM chains this can be a contract, but must be the original ctx.sender() EOA on Sui.
   entry fun replace_deposit_for_burn(
     original_raw_message: vector<u8>,
     original_attestation: vector<u8>,
@@ -169,36 +259,106 @@ module token_messenger_minter::deposit_for_burn {
     message_transmitter_state: &MessageTransmitterState,
     ctx: &TxContext
   ): (BurnMessage, Message) {
-    assert_object_version_is_compatible_with_package(state.compatible_versions());
-    let original_message = message::from_bytes(&original_raw_message);
-    let mut burn_message = burn_message::from_bytes(&original_message.message_body());
+    replace_deposit_for_burn_shared(
+      original_raw_message, original_attestation, new_destination_caller, 
+      new_mint_recipient, ctx.sender(), state, message_transmitter_state
+    )
+  }
 
-    assert!(burn_message.message_sender() == ctx.sender(), ESenderDoesNotMatchOriginalSender);
+  /// The same as replace_deposit_for_burn, but intended to be called from 
+  /// a dependent package. Identifies sender from the unique identifier from the auth parameter.
+  /// Intended to be called from a dependent package. The calling package 
+  /// must be the sender of the original message from using deposit_for_burn_with_package_auth or deposit_for_burn_with_caller_with_package_auth.
+  /// Direct callers should use replace_deposit_for_burn instead.
+  /// 
+  /// Parameters:
+  /// - replace_deposit_for_burn_ticket: Struct containing parameters and authenticator struct. 
+  public fun replace_deposit_for_burn_with_package_auth<Auth: drop>(
+    replace_deposit_for_burn_ticket: ReplaceDepositForBurnTicket<Auth>,
+    state: &State,
+    message_transmitter_state: &MessageTransmitterState,
+  ): (BurnMessage, Message) {
+    let ReplaceDepositForBurnTicket { 
+      auth: _auth,
+      original_raw_message, 
+      original_attestation, 
+      new_destination_caller, 
+      new_mint_recipient 
+    } = replace_deposit_for_burn_ticket;
 
-    let final_new_mint_recipient = new_mint_recipient.get_with_default(burn_message.mint_recipient());
-    assert!(final_new_mint_recipient != @0x0, EZeroAddressMintRecipient);
-    burn_message.update_mint_recipient(final_new_mint_recipient);
-    burn_message.update_version(state.message_body_version());
+    // This function call is intended to come from a dependent package, 
+    // so the sender is the auth caller identifier.
+    let sender = auth_caller_identifier<Auth>();
+    replace_deposit_for_burn_shared(
+      original_raw_message, original_attestation, new_destination_caller, 
+      new_mint_recipient, sender, state, message_transmitter_state
+    )
+  }
 
-    let new_message_body = option::some(burn_message.serialize());
+  // === Ticket Structs/Functions ===
 
-    let authenticator = message_transmitter_authenticator::new();
-    let new_message = replace_message(
-      authenticator, original_raw_message, original_attestation, new_message_body, new_destination_caller, message_transmitter_state
-    ); 
+  #[allow(lint(coin_field))]
+  public struct DepositForBurnTicket<phantom T: drop, Auth: drop> {
+    auth: Auth,
+    coins: Coin<T>, 
+    destination_domain: u32, 
+    mint_recipient: address, 
+  }
 
-    emit(DepositForBurn {
-      nonce: original_message.nonce(), 
-      burn_token: burn_message.burn_token(), 
-      amount: burn_message.amount() as u64, 
-      depositor: ctx.sender(), 
-      mint_recipient: final_new_mint_recipient, 
-      destination_domain: original_message.destination_domain(), 
-      destination_token_messenger: original_message.recipient(), 
-      destination_caller: new_message.destination_caller()
-    });
+  /// Not version-gated so it can be safely called from a dependent package,
+  /// and then passed to deposit_for_burn_with_package_auth (version-gated) from a PTB.
+  /// See deposit_for_burn for parameter information.
+  public fun create_deposit_for_burn_ticket<T: drop, Auth: drop>(
+    auth: Auth,
+    coins: Coin<T>, 
+    destination_domain: u32, 
+    mint_recipient: address
+  ): DepositForBurnTicket<T, Auth> {
+    DepositForBurnTicket { auth, coins, destination_domain, mint_recipient }
+  }
 
-    (burn_message, new_message)
+  #[allow(lint(coin_field))]
+  public struct DepositForBurnWithCallerTicket<phantom T: drop, Auth: drop> {
+    auth: Auth,
+    coins: Coin<T>, 
+    destination_domain: u32, 
+    mint_recipient: address, 
+    destination_caller: address
+  }
+
+  /// Not version-gated so it can be safely called from a dependent package,
+  /// and then passed to deposit_for_burn_with_caller_with_package_auth (version-gated) from a PTB.
+  /// See deposit_for_burn for parameter information.
+  public fun create_deposit_for_burn_with_caller_ticket<T: drop, Auth: drop>(
+    auth: Auth,
+    coins: Coin<T>, 
+    destination_domain: u32, 
+    mint_recipient: address,
+    destination_caller: address
+  ): DepositForBurnWithCallerTicket<T, Auth> {
+    DepositForBurnWithCallerTicket { auth, coins, destination_domain, mint_recipient, destination_caller }
+  }
+
+  #[allow(lint(coin_field))]
+  public struct ReplaceDepositForBurnTicket<Auth: drop> {
+    auth: Auth,
+    original_raw_message: vector<u8>,
+    original_attestation: vector<u8>,
+    new_destination_caller: Option<address>,
+    new_mint_recipient: Option<address>,
+  }
+
+  /// Not version-gated so it can be safely called from a dependent package,
+  /// and then passed to replace_deposit_for_burn_with_package_auth (version-gated) from a PTB.
+  /// See replace_deposit_for_burn for parameter information.
+  public fun create_replace_deposit_for_burn_ticket<Auth: drop>(
+    auth: Auth,
+    original_raw_message: vector<u8>,
+    original_attestation: vector<u8>,
+    new_destination_caller: Option<address>,
+    new_mint_recipient: Option<address>,
+  ): ReplaceDepositForBurnTicket<Auth> {
+    ReplaceDepositForBurnTicket { auth, original_raw_message, original_attestation, new_destination_caller, new_mint_recipient }
   }
 
   // === Private Functions ===
@@ -211,6 +371,7 @@ module token_messenger_minter::deposit_for_burn {
     destination_domain: u32, 
     mint_recipient: address, 
     destination_caller: address,
+    message_sender: address,
     state: &State,
     message_transmitter_state: &mut MessageTransmitterState,
     deny_list: &DenyList,
@@ -233,7 +394,7 @@ module token_messenger_minter::deposit_for_burn {
 
     treasury::burn(treasury, mint_cap, deny_list, coins, ctx);
 
-    let burn_message = burn_message::new(state.message_body_version(), token_id, mint_recipient, amount as u256, ctx.sender());
+    let burn_message = burn_message::new(state.message_body_version(), token_id, mint_recipient, amount as u256, message_sender);
 
     let message = send_deposit_for_burn_message(
       destination_domain, 
@@ -247,7 +408,7 @@ module token_messenger_minter::deposit_for_burn {
       nonce: message.nonce(), 
       burn_token: token_id, 
       amount, 
-      depositor: ctx.sender(), 
+      depositor: message_sender, 
       mint_recipient, 
       destination_domain, 
       destination_token_messenger, 
@@ -255,6 +416,50 @@ module token_messenger_minter::deposit_for_burn {
     });
 
     (burn_message, message)
+  }
+
+  /// Shared functionality between replace_deposit_for_burn and replace_deposit_for_burn_with_package_auth.
+  /// Replaces a given BurnMessage if sender is the same as the original message sender.
+  entry fun replace_deposit_for_burn_shared(
+    original_raw_message: vector<u8>,
+    original_attestation: vector<u8>,
+    new_destination_caller: Option<address>,
+    new_mint_recipient: Option<address>,
+    sender: address,
+    state: &State,
+    message_transmitter_state: &MessageTransmitterState
+  ): (BurnMessage, Message) {
+    assert_object_version_is_compatible_with_package(state.compatible_versions());
+    let original_message = message::from_bytes(&original_raw_message);
+    let mut burn_message = burn_message::from_bytes(&original_message.message_body());
+
+    // sender could either be an EOA or an Auth identifier.
+    assert!(burn_message.message_sender() == sender, ESenderDoesNotMatchOriginalSender);
+
+    let final_new_mint_recipient = new_mint_recipient.get_with_default(burn_message.mint_recipient());
+    assert!(final_new_mint_recipient != @0x0, EZeroAddressMintRecipient);
+    burn_message.update_mint_recipient(final_new_mint_recipient);
+    burn_message.update_version(state.message_body_version());
+
+    let new_message_body = option::some(burn_message.serialize());
+
+    let authenticator = message_transmitter_authenticator::new();
+    let new_message = replace_message(
+      authenticator, original_raw_message, original_attestation, new_message_body, new_destination_caller, message_transmitter_state
+    );  
+
+    emit(DepositForBurn {
+      nonce: new_message.nonce(), 
+      burn_token: burn_message.burn_token(), 
+      amount: burn_message.amount() as u64, 
+      depositor: sender, 
+      mint_recipient: final_new_mint_recipient, 
+      destination_domain: new_message.destination_domain(), 
+      destination_token_messenger: new_message.recipient(), 
+      destination_caller: new_message.destination_caller()
+    });
+
+    (burn_message, new_message)
   }
 
   /// Fetches the remote token messsenger, first validating that it exists.
@@ -323,8 +528,9 @@ module token_messenger_minter::deposit_for_burn_tests {
   use message_transmitter::{
     attester_manager,
     message::{Self, Message}, 
+    message_transmitter_authenticator,
+    send_message::auth_caller_identifier,
     state as message_transmitter_state,
-    send_message::auth_caller_identifier
   };
   use stablecoin::treasury::{Self, Treasury, MintCap};
   use token_messenger_minter::{
@@ -412,6 +618,67 @@ module token_messenger_minter::deposit_for_burn_tests {
   }
 
   #[test]
+  fun test_deposit_for_burn_with_package_auth_successful() {
+    let mut scenario = test_scenario::begin(ADMIN);
+    let (mint_cap, mut treasury, deny_list) = setup_coin(&mut scenario);
+    let (token_messenger_state, mut message_transmitter_state) = setup_cctp_states(
+      mint_cap, &mut scenario
+    );
+
+    // Perform deposit_for_burn
+    scenario.next_tx(USER);
+    {
+      let coins = scenario.take_from_sender<Coin<DEPOSIT_FOR_BURN_TESTS>>();
+      let auth = message_transmitter_authenticator::new();
+      let auth_id = auth_caller_identifier<message_transmitter_authenticator::SendMessageTestAuth>();
+      let ticket = deposit_for_burn::create_deposit_for_burn_ticket(auth, coins, DESTINATION_DOMAIN, MINT_RECIPIENT);
+      let (burn_message, message) = deposit_for_burn::deposit_for_burn_with_package_auth(
+        ticket,
+        &token_messenger_state,
+        &mut message_transmitter_state,
+        &deny_list,
+        &mut treasury,
+        scenario.ctx()
+      );
+
+      // Assert correct BurnMessage values
+      assert_eq(burn_message.version(), 1);
+      assert_eq(burn_message.burn_token(), calculate_token_id<DEPOSIT_FOR_BURN_TESTS>());
+      assert_eq(burn_message.mint_recipient(), MINT_RECIPIENT);
+      assert_eq(burn_message.amount(), AMOUNT);
+      assert_eq(burn_message.message_sender(), auth_id);
+
+      // Assert correct Message values
+      assert_eq(message.version(), 1);
+      assert_eq(message.source_domain(), 0);
+      assert_eq(message.destination_domain(), 2);
+      assert_eq(message.nonce(), 0);
+      assert_eq(message.sender(), auth_caller_identifier<MessageTransmitterAuthenticator>());
+      assert_eq(message.recipient(), REMOTE_TOKEN_MESSENGER);
+      assert_eq(message.destination_caller(), @0x0);
+      assert_eq(
+        message.message_body(),
+        x"00000001aa9d562b0a114a7cfa31074ac0ac0a543a25b034ba38830c82e7163775c94c8600000000000000000000000000000000000000000000000000000000000000b20000000000000000000000000000000000000000000000000000000000000064949764be99bacbf6297178f1b467586bac40d0012cb816d5c1a2ea9167e79dfe"
+      );
+
+      // num of events include message_sent, burn, and deposit for burn events
+      assert!(num_events() == 3);
+      let burn_token = calculate_token_id<DEPOSIT_FOR_BURN_TESTS>();
+      assert_eq(
+        last_event_by_type<deposit_for_burn::DepositForBurn>(),
+        deposit_for_burn::create_deposit_for_burn_event(0,burn_token, AMOUNT as u64, auth_id, MINT_RECIPIENT, 2, REMOTE_TOKEN_MESSENGER, @0x0)
+      );
+    };
+
+    // Clean up
+    test_utils::destroy(deny_list);
+    test_utils::destroy(treasury);
+    test_utils::destroy(token_messenger_state);
+    test_utils::destroy(message_transmitter_state);
+    scenario.end();
+  }
+
+  #[test]
   fun test_deposit_for_burn_with_caller_successful() {
       let mut scenario = test_scenario::begin(ADMIN);
       let (mint_cap, mut treasury, deny_list) = setup_coin(&mut scenario);
@@ -460,6 +727,68 @@ module token_messenger_minter::deposit_for_burn_tests {
         assert!(num_events() == 3);
         let burn_token = calculate_token_id<DEPOSIT_FOR_BURN_TESTS>();
         assert!(last_event_by_type<deposit_for_burn::DepositForBurn>() == deposit_for_burn::create_deposit_for_burn_event(0, burn_token, AMOUNT as u64, USER, MINT_RECIPIENT, 2, REMOTE_TOKEN_MESSENGER, DESTINATION_CALLER));
+      };
+
+      // Clean up
+      test_utils::destroy(deny_list);
+      test_utils::destroy(treasury);
+      test_utils::destroy(token_messenger_state);
+      test_utils::destroy(message_transmitter_state);
+      scenario.end();
+  }
+
+  #[test]
+  fun test_deposit_for_burn_with_caller_with_package_auth_successful() {
+      let mut scenario = test_scenario::begin(ADMIN);
+      let (mint_cap, mut treasury, deny_list) = setup_coin(&mut scenario);
+      let (token_messenger_state, mut message_transmitter_state) = setup_cctp_states(
+        mint_cap, &mut scenario
+      );
+
+      // Perform deposit_for_burn_with_caller_with_package_auth
+      scenario.next_tx(USER);
+      {
+        let coins = scenario.take_from_sender<Coin<DEPOSIT_FOR_BURN_TESTS>>();
+        let auth = message_transmitter_authenticator::new();
+        let auth_id = auth_caller_identifier<message_transmitter_authenticator::SendMessageTestAuth>();
+        let ticket = deposit_for_burn::create_deposit_for_burn_with_caller_ticket(auth, coins, DESTINATION_DOMAIN, MINT_RECIPIENT, DESTINATION_CALLER);
+        let (burn_message, message) = deposit_for_burn::deposit_for_burn_with_caller_with_package_auth(
+          ticket,
+          &token_messenger_state,
+          &mut message_transmitter_state,
+          &deny_list,
+          &mut treasury,
+          scenario.ctx()
+        );
+
+        // Assert correct BurnMessage values
+        assert_eq(burn_message.version(), 1);
+        assert_eq(burn_message.burn_token(), calculate_token_id<DEPOSIT_FOR_BURN_TESTS>());
+        assert_eq(burn_message.mint_recipient(), MINT_RECIPIENT);
+        assert_eq(burn_message.amount(), AMOUNT);
+        assert_eq(burn_message.message_sender(), auth_id);
+
+        // Assert correct Message values
+        assert_eq(message.version(), 1);
+        assert_eq(message.source_domain(), 0);
+        assert_eq(message.destination_domain(), 2);
+        assert_eq(message.nonce(), 0);
+        assert_eq(message.sender(), auth_caller_identifier<MessageTransmitterAuthenticator>());
+        assert_eq(message.recipient(), REMOTE_TOKEN_MESSENGER);
+        assert_eq(message.destination_caller(), DESTINATION_CALLER);
+        // Hardcoded expected message body
+        assert_eq(
+          message.message_body(), 
+          x"00000001aa9d562b0a114a7cfa31074ac0ac0a543a25b034ba38830c82e7163775c94c8600000000000000000000000000000000000000000000000000000000000000b20000000000000000000000000000000000000000000000000000000000000064949764be99bacbf6297178f1b467586bac40d0012cb816d5c1a2ea9167e79dfe"
+        );
+
+        // num of events include message sent, burn, and deposit for burn events
+        assert!(num_events() == 3);
+        let burn_token = calculate_token_id<DEPOSIT_FOR_BURN_TESTS>();
+        assert_eq(
+          last_event_by_type<deposit_for_burn::DepositForBurn>(), 
+          deposit_for_burn::create_deposit_for_burn_event(0, burn_token, AMOUNT as u64, auth_id, MINT_RECIPIENT, 2, REMOTE_TOKEN_MESSENGER, DESTINATION_CALLER)
+        );
       };
 
       // Clean up
@@ -831,7 +1160,7 @@ module token_messenger_minter::deposit_for_burn_tests {
       option::some(NEW_DESTINATION_CALLER),
       option::some(NEW_MINT_RECIPIENT),
       &token_messenger_state,
-      &mut message_transmitter_state,
+      &message_transmitter_state,
       user_ctx
     );
 
@@ -859,6 +1188,68 @@ module token_messenger_minter::deposit_for_burn_tests {
     test_utils::destroy(message_transmitter_state);
     test_utils::destroy(token_messenger_state);
     test_scenario::end(user_scenario);
+  }
+
+   #[test]
+  fun test_replace_deposit_for_burn_with_package_auth_successful() {
+    let mut admin_scenario = test_scenario::begin(ADMIN);
+    let admin_ctx = test_scenario::ctx(&mut admin_scenario);
+    let mut message_transmitter_state = message_transmitter_state::new_for_testing(
+      0, 1, 1000, ADMIN, admin_ctx
+    );
+    let token_messenger_state = token_messenger_state::new(1, ADMIN, admin_ctx);
+
+    attester_manager::enable_attester(@0xbcd4042de499d14e55001ccbb24a551f3b954096, &mut message_transmitter_state, admin_ctx);
+    test_scenario::end(admin_scenario);
+
+    // Create original message and burn message
+    let auth_id = auth_caller_identifier<message_transmitter_authenticator::SendMessageTestAuth>();
+    let nonce = 10;
+    let token_id = calculate_token_id<DEPOSIT_FOR_BURN_TESTS>();
+    let burn_message = create_mock_burn_message(
+      1, token_id, ORIGINAL_MINT_RECIPIENT, 100, auth_id
+    );
+    let original_message = create_mock_message(
+      1, 0, 2, nonce, auth_caller_identifier<MessageTransmitterAuthenticator>(), REMOTE_TOKEN_MESSENGER, @0x0, burn_message.serialize()
+    );
+    let original_raw_message = original_message.serialize();
+    let original_attestation = x"21bb68570d977ec08120a349fa37615ef548cd98e8de3a4142802cf85c33f65a220626d6ea31bea28f5004e448b14ec85dc227a28a882c985ff8d3976e51f4951c";
+
+    // Call replace_deposit_for_burn_with_package_auth
+    let auth = message_transmitter_authenticator::new();
+    let ticket = deposit_for_burn::create_replace_deposit_for_burn_ticket(auth, original_raw_message, original_attestation, option::some(NEW_DESTINATION_CALLER), option::some(NEW_MINT_RECIPIENT));
+    let (new_burn_message, new_message) = deposit_for_burn::replace_deposit_for_burn_with_package_auth(
+      ticket,
+      &token_messenger_state,
+      &message_transmitter_state
+    );
+
+    // Assert burn message fields
+    assert_eq(new_burn_message.version(), 1);
+    assert_eq(new_burn_message.burn_token(), token_id);
+    assert_eq(new_burn_message.mint_recipient(), NEW_MINT_RECIPIENT);
+    assert_eq(new_burn_message.amount(), 100);
+    assert_eq(new_burn_message.message_sender(), auth_id);
+
+    // Assert message fields
+    assert_eq(new_message.version(), 1);
+    assert_eq(new_message.source_domain(), 0);
+    assert_eq(new_message.destination_domain(), 2);
+    assert_eq(new_message.nonce(), nonce);
+    assert_eq(new_message.sender(), auth_caller_identifier<MessageTransmitterAuthenticator>());
+    assert_eq(new_message.recipient(), REMOTE_TOKEN_MESSENGER);
+    assert_eq(new_message.destination_caller(), NEW_DESTINATION_CALLER);
+    assert_eq(new_message.message_body(), new_burn_message.serialize());
+
+    assert_eq(num_events(), 2);
+    let burn_token = calculate_token_id<DEPOSIT_FOR_BURN_TESTS>();
+    assert_eq(
+      last_event_by_type<deposit_for_burn::DepositForBurn>(), 
+      deposit_for_burn::create_deposit_for_burn_event(nonce, burn_token, AMOUNT as u64, auth_id, NEW_MINT_RECIPIENT, 2, REMOTE_TOKEN_MESSENGER, NEW_DESTINATION_CALLER)
+    );
+
+    test_utils::destroy(message_transmitter_state);
+    test_utils::destroy(token_messenger_state);
   }
 
   #[test]
@@ -893,7 +1284,7 @@ module token_messenger_minter::deposit_for_burn_tests {
       option::some(NEW_DESTINATION_CALLER),
       option::none(), // Use same as original
       &token_messenger_state,
-      &mut message_transmitter_state,
+      &message_transmitter_state,
       user_ctx
     );
 
@@ -914,7 +1305,7 @@ module token_messenger_minter::deposit_for_burn_tests {
   fun test_replace_deposit_for_burn_sender_mismatch() {
     let mut scenario = test_scenario::begin(@0x9999); // Different sender
     let ctx = test_scenario::ctx(&mut scenario);
-    let mut message_transmitter_state = message_transmitter_state::new_for_testing(
+    let message_transmitter_state = message_transmitter_state::new_for_testing(
       0, 1, 1000, ADMIN, ctx
     );
     let token_messenger_state = token_messenger_state::new(1, ADMIN, ctx);
@@ -931,8 +1322,38 @@ module token_messenger_minter::deposit_for_burn_tests {
       option::some(NEW_DESTINATION_CALLER),
       option::some(NEW_MINT_RECIPIENT),
       &token_messenger_state,
-      &mut message_transmitter_state,
+      &message_transmitter_state,
       ctx
+    );
+
+    test_utils::destroy(message_transmitter_state);
+    test_utils::destroy(token_messenger_state);
+    test_scenario::end(scenario);
+  }
+
+  #[test]
+  #[expected_failure(abort_code = deposit_for_burn::ESenderDoesNotMatchOriginalSender)]
+  fun test_replace_deposit_for_burn_with_package_auth_sender_mismatch() {
+    let mut scenario = test_scenario::begin(@0x9999); // Different sender
+    let ctx = test_scenario::ctx(&mut scenario);
+    let message_transmitter_state = message_transmitter_state::new_for_testing(
+      0, 1, 1000, ADMIN, ctx
+    );
+    let token_messenger_state = token_messenger_state::new(1, ADMIN, ctx);
+
+    let token_id = calculate_token_id<DEPOSIT_FOR_BURN_TESTS>();
+    // Create original message owned by USER (rather than auth identifier)
+    let burn_message = create_mock_burn_message(1, token_id, ORIGINAL_MINT_RECIPIENT, 100, USER);
+    let original_message = create_mock_message(1, 0, 2, 10, USER, @0x5678, @0x0, burn_message.serialize());
+    let original_raw_message = original_message.serialize();
+    let original_attestation = x"";
+
+    let auth = message_transmitter_authenticator::new();
+    let ticket = deposit_for_burn::create_replace_deposit_for_burn_ticket(auth, original_raw_message, original_attestation, option::some(NEW_DESTINATION_CALLER), option::some(NEW_MINT_RECIPIENT));
+    deposit_for_burn::replace_deposit_for_burn_with_package_auth(
+      ticket,
+      &token_messenger_state,
+      &message_transmitter_state
     );
 
     test_utils::destroy(message_transmitter_state);
@@ -945,7 +1366,7 @@ module token_messenger_minter::deposit_for_burn_tests {
   fun test_replace_deposit_for_burn_zero_address_mint_recipient() {
     let mut scenario = test_scenario::begin(USER);
     let ctx = test_scenario::ctx(&mut scenario);
-    let mut message_transmitter_state = message_transmitter_state::new_for_testing(
+    let message_transmitter_state = message_transmitter_state::new_for_testing(
       0, 1, 1000, ADMIN, ctx
     );
     let token_messenger_state = token_messenger_state::new(1, ADMIN, ctx);
@@ -966,7 +1387,7 @@ module token_messenger_minter::deposit_for_burn_tests {
       option::some(NEW_DESTINATION_CALLER),
       option::some(@0x0), // Zero address mint recipient
       &token_messenger_state,
-      &mut message_transmitter_state,
+      &message_transmitter_state,
       ctx
     );
 
@@ -980,7 +1401,7 @@ module token_messenger_minter::deposit_for_burn_tests {
   fun test_replace_deposit_for_burn_revert_incompatible_version() {
     let mut scenario = test_scenario::begin(USER);
     let ctx = test_scenario::ctx(&mut scenario);
-    let mut message_transmitter_state = message_transmitter_state::new_for_testing(
+    let message_transmitter_state = message_transmitter_state::new_for_testing(
       0, 1, 1000, ADMIN, ctx
     );
     let mut token_messenger_state = token_messenger_state::new(1, ADMIN, ctx);
@@ -1003,7 +1424,7 @@ module token_messenger_minter::deposit_for_burn_tests {
       option::some(NEW_DESTINATION_CALLER),
       option::some(@0x0), // Zero address mint recipient
       &token_messenger_state,
-      &mut message_transmitter_state,
+      &message_transmitter_state,
       ctx
     );
 
