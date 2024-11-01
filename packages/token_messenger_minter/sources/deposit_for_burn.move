@@ -33,9 +33,12 @@ module token_messenger_minter::deposit_for_burn {
   };
   use stablecoin::{treasury::{Self, MintCap, Treasury}};
   use message_transmitter::{
+    auth::auth_caller_identifier,
     message::{Self, Message},
     send_message::{
-      auth_caller_identifier,
+      create_send_message_ticket, 
+      create_send_message_with_caller_ticket, 
+      create_replace_message_ticket, 
       replace_message, 
       send_message, 
       send_message_with_caller
@@ -188,7 +191,7 @@ module token_messenger_minter::deposit_for_burn {
     )
   }
 
-  /// Same as deposit_for_burn, except the receive_message call on the destination 
+  /// Same as deposit_for_burn_with_package_auth, except the receive_message call on the destination 
   /// domain must be called by `destination_caller`.
   /// Intended to be called from a dependent package. The calling package 
   /// will be the "owner" of the message and be able to call replace_deposit_for_burn.
@@ -237,6 +240,9 @@ module token_messenger_minter::deposit_for_burn {
   /// message's nonce. For a given nonce, all replacement message(s) and the 
   /// original message are valid to broadcast on the destination domain, until 
   /// the first message at the nonce confirms, at which point all others are invalidated.
+  /// 
+  /// Intended to be called by an EOA where an EOA was the message_sender of the message. 
+  /// Messages owned by Auth identifiers should use replace_deposit_for_burn_with_package_auth.
   /// 
   /// Reverts if:
   /// - original message or attestation are invalid
@@ -297,6 +303,9 @@ module token_messenger_minter::deposit_for_burn {
 
   // === Ticket Structs/Functions ===
 
+  /// The following create_..._ticket functions are non version-gated functions, intended to be 
+  /// called directly from other packages to create ticket structs that can be passed into public version-gated functions 
+  /// outside of the calling package in a PTB. This prevents dependent packages from needing to be updated after CCTP upgrades.
   #[allow(lint(coin_field))]
   public struct DepositForBurnTicket<phantom T: drop, Auth: drop> {
     auth: Auth,
@@ -420,6 +429,7 @@ module token_messenger_minter::deposit_for_burn {
 
   /// Shared functionality between replace_deposit_for_burn and replace_deposit_for_burn_with_package_auth.
   /// Replaces a given BurnMessage if sender is the same as the original message sender.
+  /// Returns the updated BurnMessage and Message.
   entry fun replace_deposit_for_burn_shared(
     original_raw_message: vector<u8>,
     original_attestation: vector<u8>,
@@ -430,8 +440,8 @@ module token_messenger_minter::deposit_for_burn {
     message_transmitter_state: &MessageTransmitterState
   ): (BurnMessage, Message) {
     assert_object_version_is_compatible_with_package(state.compatible_versions());
-    let original_message = message::from_bytes(&original_raw_message);
-    let mut burn_message = burn_message::from_bytes(&original_message.message_body());
+    let original_message_body = message::message_body_from_bytes(&original_raw_message);
+    let mut burn_message = burn_message::from_bytes(&original_message_body);
 
     // sender could either be an EOA or an Auth identifier.
     assert!(burn_message.message_sender() == sender, ESenderDoesNotMatchOriginalSender);
@@ -444,9 +454,12 @@ module token_messenger_minter::deposit_for_burn {
     let new_message_body = option::some(burn_message.serialize());
 
     let authenticator = message_transmitter_authenticator::new();
+    let ticket = create_replace_message_ticket(
+      authenticator, original_raw_message, original_attestation, new_message_body, new_destination_caller
+    );
     let new_message = replace_message(
-      authenticator, original_raw_message, original_attestation, new_message_body, new_destination_caller, message_transmitter_state
-    );  
+      ticket, message_transmitter_state
+    ); 
 
     emit(DepositForBurn {
       nonce: new_message.nonce(), 
@@ -491,11 +504,16 @@ module token_messenger_minter::deposit_for_burn {
     // Create a new message_transmitter_authenticator to pass to message_transmitter
     let authenticator = message_transmitter_authenticator::new();
 
+    // Create the ticket and send the message. TokenMessengerMinter doesn't follow the pattern of returning the ticket
+    // and calling send_message in a PTB because TokenMessengerMinter and MessageTransmitter are controlled by the same 
+    // owner so upgrades can be coordinated between the two.
     let message;
     if (destination_caller == @0x0) {
-      message = send_message(authenticator, destination_domain, destination_token_messenger, burn_message.serialize(), message_transmitter_state)
+      let ticket = create_send_message_ticket(authenticator, destination_domain, destination_token_messenger, burn_message.serialize());
+      message = send_message(ticket, message_transmitter_state)
     } else {
-      message = send_message_with_caller(authenticator, destination_domain, destination_token_messenger, destination_caller, burn_message.serialize(), message_transmitter_state)
+      let ticket = create_send_message_with_caller_ticket(authenticator, destination_domain, destination_token_messenger, destination_caller, burn_message.serialize());
+      message = send_message_with_caller(ticket, message_transmitter_state)
     };
 
     message
@@ -527,9 +545,9 @@ module token_messenger_minter::deposit_for_burn_tests {
   };
   use message_transmitter::{
     attester_manager,
+    auth::auth_caller_identifier,
     message::{Self, Message}, 
     message_transmitter_authenticator,
-    send_message::auth_caller_identifier,
     state as message_transmitter_state,
   };
   use stablecoin::treasury::{Self, Treasury, MintCap};
@@ -714,7 +732,7 @@ module token_messenger_minter::deposit_for_burn_tests {
         assert_eq(message.source_domain(), 0);
         assert_eq(message.destination_domain(), 2);
         assert_eq(message.nonce(), 0);
-        assert_eq(message.sender(),auth_caller_identifier< MessageTransmitterAuthenticator>());
+        assert_eq(message.sender(), auth_caller_identifier< MessageTransmitterAuthenticator>());
         assert_eq(message.recipient(), REMOTE_TOKEN_MESSENGER);
         assert_eq(message.destination_caller(), DESTINATION_CALLER);
         // Hardcoded expected message body
@@ -1522,7 +1540,7 @@ module token_messenger_minter::deposit_for_burn_tests {
       destination_caller: address,
       message_body: vector<u8>
   ): Message {
-      message::new(
+      message::new_for_testing(
           version,
           source_domain,
           destination_domain,

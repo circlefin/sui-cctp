@@ -132,16 +132,33 @@ const main = async () => {
   });
 
   // Add handle_receive_message call
-  const [stampedReceipt] = receiveMessageTx.moveCall({
+  const [stampReceiptTicketWithBurnMessage] = receiveMessageTx.moveCall({
     target: `${tokenMessengerMinterId}::handle_receive_message::handle_receive_message`,
     arguments: [
       receipt, // Receipt object returned from receive_message call
       receiveMessageTx.object(tokenMessengerMinterStateId), // token_messenger_minter state
-      receiveMessageTx.object(messageTransmitterStateId), // message_transmitter state
       receiveMessageTx.object("0x403"), // deny list, fixed address
       receiveMessageTx.object(treasuryId), // usdc treasury object Treasury<T>
     ],
     typeArguments: [`${usdcId}::usdc::USDC`],
+  });
+
+  // Add deconstruct_stamp_receipt_ticket_with_burn_message call
+  const [stampReceiptTicket] = receiveMessageTx.moveCall({
+    target: `${tokenMessengerMinterId}::handle_receive_message::deconstruct_stamp_receipt_ticket_with_burn_message`,
+    arguments: [
+      stampReceiptTicketWithBurnMessage
+    ]
+  });
+
+  // Add stamp_receipt call
+  const [stampedReceipt] = receiveMessageTx.moveCall({
+    target: `${messageTransmitterId}::receive_message::stamp_receipt`,
+    arguments: [
+      stampReceiptTicket, // Receipt ticket returned from deconstruct_stamp_receipt_ticket_with_burn_message call
+      receiveMessageTx.object(messageTransmitterStateId), // message_transmitter state
+    ],
+    typeArguments: [`${tokenMessengerMinterId}::message_transmitter_authenticator::MessageTransmitterAuthenticator`],
   })
 
   // Add complete_receive_message call
@@ -151,7 +168,7 @@ const main = async () => {
       stampedReceipt, // Stamped receipt object returned from handle_receive_message call
       receiveMessageTx.object(messageTransmitterStateId) // message_transmitter state
     ]
-  })
+  });
 
   // Manually set the gas budget. This is sometimes required
   // for PTBs that pass objects between transaction calls.

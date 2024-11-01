@@ -27,14 +27,12 @@
 /// period of time to avoid breaking all callers immediately.
 module message_transmitter::send_message {
   // === Imports ===
-  use std::type_name::{Self};
   use sui::{
-    address,
     event::emit,
-    hash
   };
   use message_transmitter::{
     attestation,
+    auth::{auth_caller_identifier},
     message::{Self, Message},
     state::{State},
     version_control::{assert_object_version_is_compatible_with_package}
@@ -44,10 +42,9 @@ module message_transmitter::send_message {
   const EPaused: u64 = 0;
   const EMessageBodySizeExceedsLimit: u64 = 1;
   const EInvalidRecipient: u64 = 2;
-  const EInvalidAuth: u64 = 3;
-  const EInvalidDestinationCaller: u64 = 4;
-  const ENotOriginalSender: u64 = 5;
-  const EIncorrectSourceDomain: u64 = 6;
+  const EInvalidDestinationCaller: u64 = 3;
+  const ENotOriginalSender: u64 = 4;
+  const EIncorrectSourceDomain: u64 = 5;
 
   // === Events ===
   public struct MessageSent has copy, drop {
@@ -65,28 +62,14 @@ module message_transmitter::send_message {
   /// - invalid (e.g. @0x0) recipient is given
   /// 
   /// Parameters:
-  /// - auth: an authenticator struct from a message_transmitter_authenticator module
-  ///         This is required to securely assign a sender address associated with the calling contract to the message.
-  ///         Any struct that implements the drop trait can be used as an authenticator, but it is recommended to 
-  ///         use a dedicated auth struct.
-  ///         Calling contracts should be careful to not expose these objects to the public or else messages from 
-  ///         their package could be forged.
-  ///         An example implementation exists in the token_messenger_minter::message_transmitter_authenticator module.
-  /// - destination_domain: domain to send message to
-  /// - recipient: address of message recipient on destination domain 
-  ///              Note: If destination is a non-Move chain, mint_recipient 
-  ///              address should be converted to hex and passed in in the 
-  ///              @0x123 address format.
-  /// - message_body: raw bytes content of the message
+  /// - send_message_ticket: a struct containing the necessary information to send a message created via create_send_message_ticket.
   public fun send_message<Auth: drop>(
-    _auth: Auth, 
-    destination_domain: u32, 
-    recipient: address, 
-    message_body: vector<u8>,
+    send_message_ticket: SendMessageTicket<Auth>,
     state: &mut State,
   ): Message {
+    let SendMessageTicket { auth, destination_domain, recipient, message_body } = send_message_ticket;
     let destination_caller = @0x0;
-    send_message_impl(state, _auth, destination_domain, recipient, message_body, destination_caller)
+    send_message_impl(state, auth, destination_domain, recipient, message_body, destination_caller)
   }
 
   /// Same as send_message, except the receive_message call on the destination
@@ -100,15 +83,12 @@ module message_transmitter::send_message {
   /// Note: If destination is a non-Move chain, destination_caller address should 
   /// be converted to hex and passed in in the @0x123 address format.
   public fun send_message_with_caller<Auth: drop>(
-    _auth: Auth, 
-    destination_domain: u32, 
-    recipient: address, 
-    destination_caller: address,
-    message_body: vector<u8>,
+    send_message_with_caller_ticket: SendMessageWithCallerTicket<Auth>,
     state: &mut State,
   ): Message {
+    let SendMessageWithCallerTicket { auth, destination_domain, recipient, message_body, destination_caller } = send_message_with_caller_ticket;
     assert!(destination_caller != @0x0, EInvalidDestinationCaller);
-    send_message_impl(state, _auth, destination_domain, recipient, message_body, destination_caller)
+    send_message_impl(state, auth, destination_domain, recipient, message_body, destination_caller)
   }
 
   /// Allows the sender of a previous Message (created by send_message or 
@@ -128,29 +108,15 @@ module message_transmitter::send_message {
   /// - recipient is invalid (@0x0)
   /// 
   /// Parameters:
-  /// - auth: an authenticator struct from a message_transmitter_authenticator module
-  ///         This is required to securely assign a sender address associated with the calling contract to the message.
-  ///         Any struct that implements the drop trait can be used as an authenticator, but it is recommended to 
-  ///         use a dedicated auth struct.
-  ///         Calling contracts should be careful to not expose these objects to the public or else messages from 
-  ///         their package could be forged.
-  ///         An example implementation exists in the token_messenger_minter::message_transmitter_authenticator module.
-  /// - original_raw_message: original message in bytes.
-  /// - original_attestation: valid attestation for the original message in bytes.
-  /// - new_message_body: new message body, defaults to body of the original message.
-  /// - new_destination_caller: new destination caller for message, can be @0x0 for no caller, 
-  ///                           defaults to destination_caller of original_message.
+  /// - replace_message_ticket: a struct containing the necessary information to replace a message created via create_replace_message_ticket.
   /// 
   /// Note: The sender of the replaced message must be the same as the caller of the original message.
   ///       This is identified using the Auth generic parameter.
   public fun replace_message<Auth: drop>(
-    _auth: Auth, 
-    original_raw_message: vector<u8>,
-    original_attestation: vector<u8>,
-    new_message_body: Option<vector<u8>>,
-    new_destination_caller: Option<address>,
+    replace_message_ticket: ReplaceMessageTicket<Auth>,
     state: &State
   ): Message {
+    let ReplaceMessageTicket { auth: _auth, original_raw_message, original_attestation, new_message_body, new_destination_caller } = replace_message_ticket;
     assert_object_version_is_compatible_with_package(state.compatible_versions());
     assert!(!state.paused(), EPaused);
 
@@ -174,16 +140,86 @@ module message_transmitter::send_message {
     message
   }
 
-  // === Public-View Functions ===
-  
-  /// Returns the identifier of a MessagerTransmitter package caller Auth struct.
-  /// Identifier is the keccak256 hash of the full type name. This ensures the package,
-  /// module, and type are encoded in the identifier.
-  public fun auth_caller_identifier<Auth: drop>(): address {
-    let auth_type = type_name::get<Auth>();
-    assert!(!auth_type.is_primitive(), EInvalidAuth);
+  // === Ticket Structs/Functions ===
+  /// create_..._ticket functions below are non version-gated functions, intended to be 
+  /// called directly from other packages to create ticket structs that can be passed into public version-gated functions 
+  /// outside of the calling package in a PTB. This prevents dependent packages from needing to be updated after CCTP upgrades.
+  public struct SendMessageTicket<Auth: drop> {
+    auth: Auth,
+    destination_domain: u32, 
+    recipient: address, 
+    message_body: vector<u8>,
+  }
 
-    address::from_bytes(hash::keccak256(auth_type.into_string().as_bytes()))
+  /// Parameters:
+  /// - auth: an authenticator struct 
+  ///         This is required to securely assign a sender address associated with the calling contract to the message.
+  ///         Any struct that implements the drop trait can be used as an authenticator, but it is recommended to 
+  ///         use a dedicated auth struct.
+  ///         Calling contracts should be careful to not expose these objects to the public or else messages from 
+  ///         their package could be forged.
+  ///         An example implementation exists in the token_messenger_minter::message_transmitter_authenticator module.
+  /// - destination_domain: domain to send message to
+  /// - recipient: address of message recipient on destination domain 
+  ///              Note: If destination is a non-Move chain, mint_recipient 
+  ///              address should be converted to hex and passed in in the 
+  ///              @0x123 address format.
+  /// - message_body: raw bytes content of the message
+  public fun create_send_message_ticket<Auth: drop>(
+    auth: Auth,
+    destination_domain: u32, 
+    recipient: address, 
+    message_body: vector<u8>,
+  ): SendMessageTicket<Auth> {
+    SendMessageTicket { auth, destination_domain, recipient, message_body }
+  }
+
+  public struct SendMessageWithCallerTicket<Auth: drop> {
+    auth: Auth,
+    destination_domain: u32, 
+    recipient: address, 
+    destination_caller: address,
+    message_body: vector<u8>
+  }
+
+  /// See create_send_message_ticket for other parameters
+  /// Parameters:
+  /// - destination_caller: address of the required caller on the destination domain.
+  /// Note: If destination is a non-Move chain, destination_caller address should 
+  /// be converted to hex and passed in in the @0x123 address format.
+  public fun create_send_message_with_caller_ticket<Auth: drop>(
+    auth: Auth,
+    destination_domain: u32, 
+    recipient: address, 
+    destination_caller: address,
+    message_body: vector<u8>
+  ): SendMessageWithCallerTicket<Auth> {
+    SendMessageWithCallerTicket { auth, destination_domain, recipient, destination_caller, message_body }
+  }
+
+  public struct ReplaceMessageTicket<Auth: drop> {
+    auth: Auth,
+    original_raw_message: vector<u8>,
+    original_attestation: vector<u8>,
+    new_message_body: Option<vector<u8>>,
+    new_destination_caller: Option<address>
+  }
+
+  /// Parameters:
+  /// - auth: an authenticator struct, must match the auth used to send the original message.
+  /// - original_raw_message: original message in bytes.
+  /// - original_attestation: valid attestation for the original message in bytes.
+  /// - new_message_body: new message body, defaults to body of the original message.
+  /// - new_destination_caller: new destination caller for message, can be @0x0 for no caller, 
+  ///                           defaults to destination_caller of original_message.
+  public fun create_replace_message_ticket<Auth: drop>(
+    auth: Auth,
+    original_raw_message: vector<u8>,
+    original_attestation: vector<u8>,
+    new_message_body: Option<vector<u8>>,
+    new_destination_caller: Option<address>
+  ): ReplaceMessageTicket<Auth> {
+    ReplaceMessageTicket { auth, original_raw_message, original_attestation, new_message_body, new_destination_caller }
   }
 
   // === Private Functions ===
@@ -270,8 +306,9 @@ module message_transmitter::send_message_tests {
   };
   use message_transmitter::{
     attestation,
+    auth::{Self, auth_caller_identifier},
     message,
-    message_transmitter_authenticator::{Self, SendMessageTestAuth},
+    message_transmitter_authenticator,
     send_message,
     state,
     version_control
@@ -289,7 +326,7 @@ module message_transmitter::send_message_tests {
         0,
         1,
         7384,
-        send_message::auth_caller_identifier<message_transmitter_authenticator::SendMessageTestAuth>(),
+        auth_caller_identifier<message_transmitter_authenticator::SendMessageTestAuth>(),
         @0x1CD223dBC9ff35fF6B29dAB2339ACC842BF58cCb,
         @0x1CD223dBC9ff35fF6B29dAB2339ACC842BF58cCb,
         x"1234",
@@ -335,8 +372,11 @@ module message_transmitter::send_message_tests {
     let mut mt_state = setup_state(&mut scenario);
 
     // Expect to successfully send message
+    let ticket = send_message::create_send_message_ticket(
+      message_transmitter_authenticator::new(), 0, RECIPIENT, x"1234"
+    );
     send_message::send_message(
-      message_transmitter_authenticator::new(), 0, RECIPIENT, x"1234", &mut mt_state
+      ticket, &mut mt_state
     );
 
     assert_eq(num_events(), 1);
@@ -346,7 +386,7 @@ module message_transmitter::send_message_tests {
       0, 
       0, 
       0, 
-      send_message::auth_caller_identifier<message_transmitter_authenticator::SendMessageTestAuth>(),
+      auth_caller_identifier<message_transmitter_authenticator::SendMessageTestAuth>(),
       RECIPIENT,
       @0x0,
       x"1234",
@@ -366,8 +406,11 @@ module message_transmitter::send_message_tests {
     mt_state.set_paused(true);
 
     // Expect call to revert due to paused state
+    let ticket = send_message::create_send_message_ticket(
+      message_transmitter_authenticator::new(), 0, RECIPIENT, x"1234"
+    );
     send_message::send_message(
-      message_transmitter_authenticator::new(), 0, RECIPIENT, x"1234", &mut mt_state
+      ticket, &mut mt_state
     );
     
     test_utils::destroy(mt_state);
@@ -375,14 +418,17 @@ module message_transmitter::send_message_tests {
   }
 
   #[test] 
-  #[expected_failure(abort_code = send_message::EInvalidAuth)]
+  #[expected_failure(abort_code = auth::EInvalidAuth)]
   public fun test_send_message_revert_invalid_auth() {
     let mut scenario = test_scenario::begin(@0x0);
     let mut mt_state = setup_state(&mut scenario);
 
     // Expect call to revert due to invalid authenticator
+    let ticket = send_message::create_send_message_ticket(
+      @0x123, 0, RECIPIENT, x"1234"
+    );
     send_message::send_message(
-      @0x123, 0, RECIPIENT, x"1234", &mut mt_state
+      ticket, &mut mt_state
     );
     
     test_utils::destroy(mt_state);
@@ -399,8 +445,11 @@ module message_transmitter::send_message_tests {
     );
 
     // Expect call to revert due to too large message body
+    let ticket = send_message::create_send_message_ticket(
+      message_transmitter_authenticator::new(), 0, RECIPIENT, x"1234"
+    );
     send_message::send_message(
-      message_transmitter_authenticator::new(), 0, RECIPIENT, x"1234", &mut mt_state
+      ticket, &mut mt_state
     );
     
     test_utils::destroy(mt_state);
@@ -414,8 +463,11 @@ module message_transmitter::send_message_tests {
     let mut mt_state = setup_state(&mut scenario);
 
     // Expect call to revert due to invalid recipient
+    let ticket = send_message::create_send_message_ticket(
+      message_transmitter_authenticator::new(), 0, @0x0, x"1234"
+    );
     send_message::send_message(
-      message_transmitter_authenticator::new(), 0, @0x0, x"1234", &mut mt_state
+      ticket, &mut mt_state
     );
     
     test_utils::destroy(mt_state);
@@ -433,8 +485,11 @@ module message_transmitter::send_message_tests {
     mt_state.remove_compatible_version(version_control::current_version());
 
     // Expect call to revert due to incompatible version
+    let ticket = send_message::create_send_message_ticket(
+      message_transmitter_authenticator::new(), 0, RECIPIENT, x"1234"
+    );
     send_message::send_message(
-      message_transmitter_authenticator::new(), 0, RECIPIENT, x"1234", &mut mt_state
+      ticket, &mut mt_state
     );
     
     test_utils::destroy(mt_state);
@@ -447,8 +502,11 @@ module message_transmitter::send_message_tests {
     let mut mt_state = setup_state(&mut scenario);
 
     // Expect to successfully send message with caller
+    let ticket = send_message::create_send_message_with_caller_ticket(
+      message_transmitter_authenticator::new(), 0, RECIPIENT, DEST_CALLER, x"1234"
+    );
     send_message::send_message_with_caller(
-      message_transmitter_authenticator::new(), 0, RECIPIENT, DEST_CALLER, x"1234", &mut mt_state
+      ticket, &mut mt_state
     );
 
     assert_eq(num_events(), 1);
@@ -458,7 +516,7 @@ module message_transmitter::send_message_tests {
       0, 
       0, 
       0, 
-      send_message::auth_caller_identifier<message_transmitter_authenticator::SendMessageTestAuth>(),
+      auth_caller_identifier<message_transmitter_authenticator::SendMessageTestAuth>(),
       RECIPIENT,
       DEST_CALLER,
       x"1234",
@@ -478,8 +536,11 @@ module message_transmitter::send_message_tests {
     mt_state.set_paused(true);
 
     // Expect to revert due to paused state
+    let ticket = send_message::create_send_message_with_caller_ticket(
+      message_transmitter_authenticator::new(), 0, RECIPIENT, DEST_CALLER, x"1234"
+    );
     send_message::send_message_with_caller(
-      message_transmitter_authenticator::new(), 0, RECIPIENT, DEST_CALLER, x"1234", &mut mt_state
+      ticket, &mut mt_state
     );
     
     test_utils::destroy(mt_state);
@@ -493,8 +554,11 @@ module message_transmitter::send_message_tests {
     let mut mt_state = setup_state(&mut scenario);
 
     // Expect to revert due to invalid destination_caller
+    let ticket = send_message::create_send_message_with_caller_ticket(
+      message_transmitter_authenticator::new(), 0, RECIPIENT, @0x0, x"1234"
+    );
     send_message::send_message_with_caller(
-      message_transmitter_authenticator::new(), 0, RECIPIENT, @0x0, x"1234", &mut mt_state
+      ticket, &mut mt_state
     );
     
     test_utils::destroy(mt_state);
@@ -502,14 +566,17 @@ module message_transmitter::send_message_tests {
   }
 
   #[test]
-  #[expected_failure(abort_code = send_message::EInvalidAuth)]
+  #[expected_failure(abort_code = auth::EInvalidAuth)]
   public fun test_send_message_with_caller_revert_invalid_auth() {
     let mut scenario = test_scenario::begin(@0x0);
     let mut mt_state = setup_state(&mut scenario);
 
     // Expect to revert due to invalid authenticator
+    let ticket = send_message::create_send_message_with_caller_ticket(
+      @0x123, 0, RECIPIENT, DEST_CALLER, x"1234"
+    );
     send_message::send_message_with_caller(
-      @0x123, 0, RECIPIENT, DEST_CALLER, x"1234", &mut mt_state
+      ticket, &mut mt_state
     );
     
     test_utils::destroy(mt_state);
@@ -526,8 +593,11 @@ module message_transmitter::send_message_tests {
     );
 
     // Expect to revert due to too large message
+    let ticket = send_message::create_send_message_with_caller_ticket(
+      message_transmitter_authenticator::new(), 0, RECIPIENT, DEST_CALLER, x"1234"
+    );
     send_message::send_message_with_caller(
-      message_transmitter_authenticator::new(), 0, RECIPIENT, DEST_CALLER, x"1234", &mut mt_state
+      ticket, &mut mt_state
     );
     
     test_utils::destroy(mt_state);
@@ -541,8 +611,11 @@ module message_transmitter::send_message_tests {
     let mut mt_state = setup_state(&mut scenario);
 
     // Expect to revert due to invalid recipient
+    let ticket = send_message::create_send_message_with_caller_ticket(
+      message_transmitter_authenticator::new(), 0, @0x0, DEST_CALLER, x"1234"
+    );
     send_message::send_message_with_caller(
-      message_transmitter_authenticator::new(), 0, @0x0, DEST_CALLER, x"1234", &mut mt_state
+      ticket, &mut mt_state
     );
     
     test_utils::destroy(mt_state);
@@ -560,8 +633,11 @@ module message_transmitter::send_message_tests {
     mt_state.remove_compatible_version(version_control::current_version());
 
     // Expect call to revert due to incompatible version
+    let ticket = send_message::create_send_message_with_caller_ticket(
+      message_transmitter_authenticator::new(), 0, RECIPIENT, DEST_CALLER, x"1234"
+    );
     send_message::send_message_with_caller(
-      message_transmitter_authenticator::new(), 0, RECIPIENT, RECIPIENT, x"1234", &mut mt_state
+      ticket, &mut mt_state
     );
     
     test_utils::destroy(mt_state);
@@ -575,7 +651,10 @@ module message_transmitter::send_message_tests {
 
     // Expect to successfully replace message without changes
     let (message, attestation) = get_valid_send_message_and_attestation(&mt_state);
-    send_message::replace_message(message_transmitter_authenticator::new(), message, attestation, option::none(), option::none(), &mt_state);
+    let ticket = send_message::create_replace_message_ticket(
+      message_transmitter_authenticator::new(), message, attestation, option::none(), option::none()
+    );
+    send_message::replace_message(ticket, &mt_state);
 
     assert_eq(num_events(), 1);
     let message_sent_event = last_event_by_type<send_message::MessageSent>();
@@ -584,7 +663,7 @@ module message_transmitter::send_message_tests {
       0, 
       1, 
       7384, 
-      send_message::auth_caller_identifier<message_transmitter_authenticator::SendMessageTestAuth>(),
+      auth_caller_identifier<message_transmitter_authenticator::SendMessageTestAuth>(),
       @0x1CD223dBC9ff35fF6B29dAB2339ACC842BF58cCb,
       @0x1CD223dBC9ff35fF6B29dAB2339ACC842BF58cCb,
       x"1234",
@@ -603,7 +682,10 @@ module message_transmitter::send_message_tests {
     let new_message_body = x"123456";
     let (message, attestation) = get_valid_send_message_and_attestation(&mt_state);
 
-    send_message::replace_message(message_transmitter_authenticator::new(), message, attestation, option::some(new_message_body), option::none(), &mt_state);
+    let ticket = send_message::create_replace_message_ticket(
+      message_transmitter_authenticator::new(), message, attestation, option::some(new_message_body), option::none()
+    );
+    send_message::replace_message(ticket, &mt_state);
 
     assert_eq(num_events(), 1);
     let message_sent_event = last_event_by_type<send_message::MessageSent>();
@@ -612,7 +694,7 @@ module message_transmitter::send_message_tests {
       0, 
       1, 
       7384, 
-      send_message::auth_caller_identifier<message_transmitter_authenticator::SendMessageTestAuth>(),
+      auth_caller_identifier<message_transmitter_authenticator::SendMessageTestAuth>(),
       @0x1CD223dBC9ff35fF6B29dAB2339ACC842BF58cCb,
       @0x1CD223dBC9ff35fF6B29dAB2339ACC842BF58cCb,
       new_message_body,
@@ -631,7 +713,10 @@ module message_transmitter::send_message_tests {
     let new_destination_caller = @0x3B;
     let (message, attestation) = get_valid_send_message_and_attestation(&mt_state);
 
-    send_message::replace_message(message_transmitter_authenticator::new(), message, attestation, option::none(), option::some(new_destination_caller), &mt_state);
+    let ticket = send_message::create_replace_message_ticket(
+      message_transmitter_authenticator::new(), message, attestation, option::none(), option::some(new_destination_caller)
+    );
+    send_message::replace_message(ticket, &mt_state);
 
     assert_eq(num_events(), 1);
     let message_sent_event = last_event_by_type<send_message::MessageSent>();
@@ -640,7 +725,7 @@ module message_transmitter::send_message_tests {
       0, 
       1, 
       7384, 
-      send_message::auth_caller_identifier<message_transmitter_authenticator::SendMessageTestAuth>(),
+      auth_caller_identifier<message_transmitter_authenticator::SendMessageTestAuth>(),
       @0x1CD223dBC9ff35fF6B29dAB2339ACC842BF58cCb,
       new_destination_caller,
       x"1234",
@@ -661,21 +746,27 @@ module message_transmitter::send_message_tests {
 
     // Expect call to revert due to paused message transmitter state
     let (message, attestation) = get_valid_send_message_and_attestation(&mt_state);
-    send_message::replace_message(message_transmitter_authenticator::new(), message, attestation, option::none(), option::none(), &mt_state);
+    let ticket = send_message::create_replace_message_ticket(
+      message_transmitter_authenticator::new(), message, attestation, option::none(), option::none()
+    );
+    send_message::replace_message(ticket, &mt_state);
 
     test_utils::destroy(mt_state);
     scenario.end();
   }
 
   #[test]
-  #[expected_failure(abort_code = send_message::EInvalidAuth)]
+  #[expected_failure(abort_code = auth::EInvalidAuth)]
   public fun test_replace_message_revert_invalid_auth() {
     let mut scenario = test_scenario::begin(@0x0);
     let mt_state = setup_state(&mut scenario);
 
     // Expect call to revert due to invalid auth
     let (message, attestation) = get_valid_send_message_and_attestation(&mt_state);
-    send_message::replace_message(@0x1234, message, attestation, option::none(), option::none(), &mt_state);
+    let ticket = send_message::create_replace_message_ticket(
+      @0x1234, message, attestation, option::none(), option::none()
+    );
+    send_message::replace_message(ticket, &mt_state);
 
     test_utils::destroy(mt_state);
     scenario.end();
@@ -691,7 +782,10 @@ module message_transmitter::send_message_tests {
     let (message, mut attestation) = get_valid_send_message_and_attestation(&mt_state);
     attestation.pop_back();
 
-    send_message::replace_message(message_transmitter_authenticator::new(), message, attestation, option::none(), option::none(), &mt_state);
+    let ticket = send_message::create_replace_message_ticket(
+      message_transmitter_authenticator::new(), message, attestation, option::none(), option::none()
+    );
+    send_message::replace_message(ticket, &mt_state);
 
     test_utils::destroy(mt_state);
     scenario.end();
@@ -706,7 +800,10 @@ module message_transmitter::send_message_tests {
     // Expect call to revert due to invalid sender
     let (message, attestation) = get_invalid_send_message_and_attestation(&mt_state);
 
-    send_message::replace_message(message_transmitter_authenticator::new(), message, attestation, option::none(), option::none(), &mt_state);
+    let ticket = send_message::create_replace_message_ticket(
+      message_transmitter_authenticator::new(), message, attestation, option::none(), option::none()
+    );
+    send_message::replace_message(ticket, &mt_state);
 
     test_utils::destroy(mt_state);
     scenario.end();
@@ -725,7 +822,10 @@ module message_transmitter::send_message_tests {
     // Expect call to revert due to incorrect source domain
     let (message, attestation) = get_valid_send_message_and_attestation(&mt_state);
 
-    send_message::replace_message(message_transmitter_authenticator::new(), message, attestation, option::none(), option::none(), &mt_state);
+    let ticket = send_message::create_replace_message_ticket(
+      message_transmitter_authenticator::new(), message, attestation, option::none(), option::none()
+    );
+    send_message::replace_message(ticket, &mt_state);
 
     test_utils::destroy(mt_state);
     scenario.end();
@@ -744,7 +844,10 @@ module message_transmitter::send_message_tests {
     // Expect call to revert due to message size exceeding limit
     let (message, attestation) = get_valid_send_message_and_attestation(&mt_state);
 
-    send_message::replace_message(message_transmitter_authenticator::new(), message, attestation, option::none(), option::none(), &mt_state);
+    let ticket = send_message::create_replace_message_ticket(
+      message_transmitter_authenticator::new(), message, attestation, option::none(), option::none()
+    );
+    send_message::replace_message(ticket, &mt_state);
 
     test_utils::destroy(mt_state);
     scenario.end();
@@ -762,23 +865,12 @@ module message_transmitter::send_message_tests {
 
     // Expect call to revert due to incompatible version
     let (message, attestation) = get_valid_send_message_and_attestation(&mt_state);
-    send_message::replace_message(message_transmitter_authenticator::new(), message, attestation, option::none(), option::none(), &mt_state);
+    let ticket = send_message::create_replace_message_ticket(
+      message_transmitter_authenticator::new(), message, attestation, option::none(), option::none()
+    );
+    send_message::replace_message(ticket, &mt_state);
 
     test_utils::destroy(mt_state);
     scenario.end();
-  }
-
-  #[test]
-  public fun test_auth_caller_identifier_successful() {
-    let identifier = send_message::auth_caller_identifier<SendMessageTestAuth>();
-    // address(hash(0000000000000000000000000000000000000000000000000000000000000001::message_transmitter_authenticator::SendMessageTestAuth))
-    let expected_identifier = @0x949764be99bacbf6297178f1b467586bac40d0012cb816d5c1a2ea9167e79dfe;
-    assert_eq(identifier, expected_identifier);
-  }
-
-  #[test]
-  #[expected_failure(abort_code = send_message::EInvalidAuth)]
-  public fun test_auth_caller_identifier_revert_primitive_type() {
-    send_message::auth_caller_identifier<address>();
   }
 }

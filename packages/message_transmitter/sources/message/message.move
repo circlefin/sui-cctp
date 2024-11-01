@@ -107,40 +107,12 @@ module message_transmitter::message {
     message.message_body
   }
 
-  // === Public Functions ===
-
-  // Creates a new `Message` object from given parameters.
-  public fun new(
-    version: u32,
-    source_domain: u32,
-    destination_domain: u32,
-    nonce: u64,
-    sender: address,
-    recipient: address,
-    destination_caller: address,
-    message_body: vector<u8>
-  ): Message {
-    Message {
-      version, source_domain, destination_domain, nonce, sender, recipient, destination_caller, message_body
-    }
-  }
-
-  /// Creates a new `Message` object.
-  /// Validates the message first.
-  public fun from_bytes(message_bytes: &vector<u8>): Message {
+  public fun message_body_from_bytes(message_bytes: &vector<u8>): vector<u8> {
     validate_raw_message(message_bytes);
-    
-    Message {
-      version: deserialize_u32_be(message_bytes, VERSION_INDEX, VERSION_LEN),
-      source_domain: deserialize_u32_be(message_bytes, SOURCE_DOMAIN_INDEX, SOURCE_DOMAIN_LEN),
-      destination_domain: deserialize_u32_be(message_bytes, DESTINATION_DOMAIN_INDEX, DESTINATION_DOMAIN_LEN),
-      nonce: deserialize_u64_be(message_bytes, NONCE_INDEX, NONCE_LEN),
-      sender: deserialize_address(message_bytes, SENDER_INDEX, SENDER_LEN),
-      recipient: deserialize_address(message_bytes, RECIPIENT_INDEX, RECIPIENT_LEN),
-      destination_caller: deserialize_address(message_bytes, DESTINATION_CALLER_INDEX, DESTINATION_CALLER_LEN),
-      message_body: vector_utils::slice(message_bytes, MESSAGE_BODY_INDEX, message_bytes.length())
-    }
+    vector_utils::slice(message_bytes, MESSAGE_BODY_INDEX, message_bytes.length())
   }
+
+  // === Public Functions ===
 
   /// Serializes a given `Message` into the CCTP message format in bytes.
   public fun serialize(message: &Message): vector<u8> {
@@ -170,6 +142,41 @@ module message_transmitter::message {
 
   // === Public-Package Functions ===
 
+  /// Creates a new `Message` object from given parameters.
+  /// Has public(package) visibility so integrators can trust it when returned.
+  public(package) fun new(
+    version: u32,
+    source_domain: u32,
+    destination_domain: u32,
+    nonce: u64,
+    sender: address,
+    recipient: address,
+    destination_caller: address,
+    message_body: vector<u8>
+  ): Message {
+    Message {
+      version, source_domain, destination_domain, nonce, sender, recipient, destination_caller, message_body
+    }
+  }
+
+  /// Creates a new `Message` object.
+  /// Validates the message first.
+  /// Has public(package) visibility so integrators can trust it when returned.
+  public(package) fun from_bytes(message_bytes: &vector<u8>): Message {
+    validate_raw_message(message_bytes);
+    
+    Message {
+      version: deserialize_u32_be(message_bytes, VERSION_INDEX, VERSION_LEN),
+      source_domain: deserialize_u32_be(message_bytes, SOURCE_DOMAIN_INDEX, SOURCE_DOMAIN_LEN),
+      destination_domain: deserialize_u32_be(message_bytes, DESTINATION_DOMAIN_INDEX, DESTINATION_DOMAIN_LEN),
+      nonce: deserialize_u64_be(message_bytes, NONCE_INDEX, NONCE_LEN),
+      sender: deserialize_address(message_bytes, SENDER_INDEX, SENDER_LEN),
+      recipient: deserialize_address(message_bytes, RECIPIENT_INDEX, RECIPIENT_LEN),
+      destination_caller: deserialize_address(message_bytes, DESTINATION_CALLER_INDEX, DESTINATION_CALLER_LEN),
+      message_body: vector_utils::slice(message_bytes, MESSAGE_BODY_INDEX, message_bytes.length())
+    }
+  }
+
   public(package) fun update_message_body(
     message: &mut Message, new_message_body: vector<u8>
   ) {
@@ -195,6 +202,25 @@ module message_transmitter::message {
   }
 
   // === Test Functions ===
+
+  #[test_only]
+  public fun new_for_testing(
+    version: u32,
+    source_domain: u32,
+    destination_domain: u32,
+    nonce: u64,
+    sender: address,
+    recipient: address,
+    destination_caller: address,
+    message_body: vector<u8>
+  ): Message {
+    new(version, source_domain, destination_domain, nonce, sender, recipient, destination_caller, message_body)
+  }
+
+  #[test_only]
+  public fun from_bytes_for_testing(message_bytes: &vector<u8>): Message {
+    from_bytes(message_bytes)
+  }
 
   // Following test message is based on ->
   // ETH (Source): https://sepolia.etherscan.io/tx/0x151c196be83e2fcbd84204a521ee0a758a5e7335ac7d2c0958ef840fd485dc61
@@ -278,6 +304,7 @@ module message_transmitter::message {
     assert_eq(message.recipient(), RECIPIENT);
     assert_eq(message.destination_caller(), DESTINATION_CALLER);
     assert_eq(message.message_body(), MESSAGE_BODY);
+    assert_eq(message_body_from_bytes(&message.serialize()), MESSAGE_BODY);
   }
 
   #[test]

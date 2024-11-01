@@ -22,14 +22,13 @@
 /// Please see message_transmitter::receive_message for starting the receive message flow.
 /// Messages should be received in PTBs.
 /// After calling message_transmitter::receive_message::receive_message, one should call 
-/// handle_receive_message from this module, followed by message_transmitter::receive_message::complete_receive_message.
+/// handle_receive_message from this module, followed by message_transmitter::receive_message::stamp_receipt 
+/// and message_transmitter::receive_message::complete_receive_message.
 ///
-/// Note on upgrades: It is recommended to call all of these public 
-/// methods from PTBs rather than directly from other packages. 
-/// These functions are version gated, so if the package is upgraded, 
-/// the upgraded package must be called. In most cases, we will provide 
-/// a migration period where both package versions are callable for a
-/// period of time to avoid breaking all callers immediately.
+/// Note on upgrades: handle_receive_message is version gated, so if 
+/// the package is upgraded, the upgraded package must be called. It
+/// is not recommended to call it directly from a package and instead
+/// to call it in a PTB.
 module token_messenger_minter::handle_receive_message {
   // === Imports ===
   use sui::{
@@ -38,16 +37,15 @@ module token_messenger_minter::handle_receive_message {
   };
   use message_transmitter::{
     receive_message::{
-      StampedReceipt, 
+      StampReceiptTicket, 
       Receipt, 
-      stamp_receipt
-    },
-    state::{State as MessageTransmitterState}
+      create_stamp_receipt_ticket
+    }
   };
   use stablecoin::treasury::{Self, Treasury, MintCap};
   use token_messenger_minter::{
-    burn_message,
-    message_transmitter_authenticator,
+    burn_message::{Self, BurnMessage},
+    message_transmitter_authenticator::{Self, MessageTransmitterAuthenticator},
     state::{State},
     token_utils::{calculate_token_id},
     version_control::assert_object_version_is_compatible_with_package
@@ -73,12 +71,45 @@ module token_messenger_minter::handle_receive_message {
     mint_token: address
   }
 
+  // === Structs ===
+
+  public struct StampReceiptTicketWithBurnMessage {
+    stamp_receipt_ticket: StampReceiptTicket<MessageTransmitterAuthenticator>,
+    burn_message: BurnMessage
+  }
+
   // === Public-Mutative Functions ===
 
   /// Handles an incoming message from message_transmitter, and mints 
   /// the specified token to the recipient for valid messages. Can only be called with 
-  /// a mutable reference to a Receipt object, which can only be created via the 
-  /// message_transmitter::receive_message function.
+  /// a Receipt object, which can only be created via the message_transmitter::receive_message function.
+  /// 
+  /// Returns a StampReceiptTicketWithBurnMessage that can be deconstructed in a dependent package 
+  /// via deconstruct_stamp_receipt_ticket_with_burn_message. 
+  /// 
+  /// In the calling PTB, callers must pass the returned StampReceiptTicket to message_transmitter::stamp_receipt 
+  /// and then call message_transmitter::complete_receive_message to complete the message.
+  /// 
+  /// Full example with a package destination_caller (in a PTB):
+  /// ```
+  ///     let receive_msg_ticket = your_package::prepare_receive_message_ticket(message, attestation);
+  ///     let receipt = message_transmitter::receive_message_with_package_auth(receive_msg_ticket, &state);
+  ///     let ticket_with_burn_message = token_messenger_minter::handle_receive_message(receipt);
+  ///     // In your package you can call deconstruct_stamp_receipt_ticket_with_burn_message to deconstruct the ticket and burn_message 
+  ///     // and securely take some action with the burn_message.
+  ///     let stamp_receipt_ticket = your_package::take_some_action(ticket_with_burn_message);
+  ///     let stamped_receipt = message_transmitter::stamp_receipt(stamp_receipt_ticket);
+  ///     message_transmitter::complete_receive_message(stamped_receipt);
+  /// ```
+  /// 
+  /// Full example with no destination caller (in a PTB):
+  /// ```
+  ///     let receipt = message_transmitter::receive_message(message, attestation, &state);
+  ///     let ticket_with_burn_message = token_messenger_minter::handle_receive_message(receipt);
+  ///     let (stamp_receipt_ticket, _burn_message) = token_messenger_minter::deconstruct_stamp_receipt_ticket_with_burn_message(ticket_with_burn_message);
+  ///     let stamped_receipt = message_transmitter::stamp_receipt(stamp_receipt_ticket);
+  ///     message_transmitter::complete_receive_message(stamped_receipt);
+  /// ```
   /// 
   /// Reverts if:
   /// - Contract is paused
@@ -91,21 +122,19 @@ module token_messenger_minter::handle_receive_message {
   /// 
   /// Parameters:
   /// - receipt: Receipt object returned from message_transmitter::receive_message.
-  ///            Receipt is consumed into a StampedReceipt in stamp_receipt call which 
+  ///            Receipt is consumed into a StampReceiptTicket which 
   ///            prevents message replays (since Receipt does not have the copy ability).
   /// - state: TokenMessengerMinter shared state object.
-  /// - mt_state: MessageTransmitter shared state object.
   /// - deny_list: DenyList shared object for the stablecoin token T.
   /// - treasury: Treasury shared object for the stablecoin token T.
   /// - ctx: TxContext for the tx.
   public fun handle_receive_message<T: drop>(
     receipt: Receipt, 
     state: &mut State,
-    mt_state: &MessageTransmitterState,
     deny_list: &DenyList,
     treasury: &mut Treasury<T>,
     ctx: &mut TxContext
-  ): StampedReceipt {
+  ): StampReceiptTicketWithBurnMessage {
     assert_object_version_is_compatible_with_package(state.compatible_versions());
     assert!(!state.paused(), EPaused);
 
@@ -140,11 +169,24 @@ module token_messenger_minter::handle_receive_message {
       }
     );
 
-    // Stamp the receipt so message_transmitter knows we acknowledged the message
+    // Create StampReceiptTicket so PTB can call stamp_receipt and complete the message
     let auth = message_transmitter_authenticator::new();
-    let stamped_receipt = stamp_receipt(receipt, auth, mt_state);
+    let stamp_receipt_ticket = create_stamp_receipt_ticket(auth, receipt);
 
-    stamped_receipt
+    StampReceiptTicketWithBurnMessage {
+      stamp_receipt_ticket,
+      burn_message
+    }
+  }
+
+  public fun deconstruct_stamp_receipt_ticket_with_burn_message(
+    ticket: StampReceiptTicketWithBurnMessage
+  ): (StampReceiptTicket<MessageTransmitterAuthenticator>, BurnMessage) {
+    let StampReceiptTicketWithBurnMessage {
+      stamp_receipt_ticket,
+      burn_message
+    } = ticket;
+    (stamp_receipt_ticket, burn_message)
   }
 
   // === Private-Functions ===
@@ -228,8 +270,8 @@ module token_messenger_minter::handle_receive_message_tests {
         version_control
     };
     use message_transmitter::{
-      receive_message::{Self, complete_receive_message},
-      send_message::auth_caller_identifier,
+      auth::auth_caller_identifier,
+      receive_message::{Self, complete_receive_message, stamp_receipt},
       state as message_transmitter_state,
     };
     use sui_extensions::test_utils::last_event_by_type;
@@ -268,15 +310,15 @@ module token_messenger_minter::handle_receive_message_tests {
             1
           );
 
-          let stamped_receipt = handle_receive_message::handle_receive_message(
+          let ticket_and_message = handle_receive_message::handle_receive_message(
               receipt,
               &mut token_messenger_state,
-              &message_transmitter_state,
               &deny_list,
               &mut treasury,
               scenario.ctx()
           );
-
+          let (stamp_receipt_ticket, _message) = handle_receive_message::deconstruct_stamp_receipt_ticket_with_burn_message(ticket_and_message);
+          let stamped_receipt = stamp_receipt(stamp_receipt_ticket, &message_transmitter_state);
           complete_receive_message(stamped_receipt, &message_transmitter_state);
         };
 
@@ -319,15 +361,15 @@ module token_messenger_minter::handle_receive_message_tests {
             1
             );
 
-            let stamped_receipt = handle_receive_message::handle_receive_message(
+            let ticket_and_message = handle_receive_message::handle_receive_message(
                 receipt,
                 &mut token_messenger_state,
-                &message_transmitter_state,
                 &deny_list,
                 &mut treasury,
                 scenario.ctx()
             );
-            test_utils::destroy(stamped_receipt);
+            let (stamp_receipt_ticket, _message) = handle_receive_message::deconstruct_stamp_receipt_ticket_with_burn_message(ticket_and_message);
+            test_utils::destroy(stamp_receipt_ticket);
         };
 
         test_utils::destroy(token_messenger_state);
@@ -357,16 +399,16 @@ module token_messenger_minter::handle_receive_message_tests {
             1
         );
 
-        let stamped_receipt = handle_receive_message::handle_receive_message(
+        let ticket_and_message = handle_receive_message::handle_receive_message(
             receipt,
             &mut token_messenger_state,
-            &message_transmitter_state,
             &deny_list,
             &mut treasury,
             scenario.ctx()
         );
+        
 
-        test_utils::destroy(stamped_receipt);
+        test_utils::destroy(ticket_and_message);
         test_utils::destroy(token_messenger_state);
         test_utils::destroy(message_transmitter_state);
         test_utils::destroy(deny_list);
@@ -401,16 +443,15 @@ module token_messenger_minter::handle_receive_message_tests {
             1
         );
 
-        let stamped_receipt = handle_receive_message::handle_receive_message(
+        let ticket_and_message = handle_receive_message::handle_receive_message(
             receipt,
             &mut token_messenger_state,
-            &message_transmitter_state,
             &deny_list,
             &mut treasury,
             scenario.ctx()
         );
 
-        test_utils::destroy(stamped_receipt);
+        test_utils::destroy(ticket_and_message);
         test_utils::destroy(token_messenger_state);
         test_utils::destroy(message_transmitter_state);
         test_utils::destroy(deny_list);
@@ -438,16 +479,15 @@ module token_messenger_minter::handle_receive_message_tests {
             1
         );
 
-        let stamped_receipt = handle_receive_message::handle_receive_message(
-                receipt,
+        let ticket_and_message = handle_receive_message::handle_receive_message(
+            receipt,
             &mut token_messenger_state,
-            &message_transmitter_state,
             &deny_list,
             &mut treasury,
             scenario.ctx()
         );
 
-        test_utils::destroy(stamped_receipt);
+        test_utils::destroy(ticket_and_message);
         test_utils::destroy(token_messenger_state);
         test_utils::destroy(message_transmitter_state);
         test_utils::destroy(deny_list);
@@ -479,16 +519,15 @@ module token_messenger_minter::handle_receive_message_tests {
             1
         );
 
-        let stamped_receipt = handle_receive_message::handle_receive_message(
-                receipt,
+        let ticket_and_message = handle_receive_message::handle_receive_message(
+            receipt,
             &mut token_messenger_state,
-            &message_transmitter_state,
             &deny_list,
             &mut treasury,
             scenario.ctx()
         );
 
-        test_utils::destroy(stamped_receipt);
+        test_utils::destroy(ticket_and_message);
         test_utils::destroy(token_messenger_state);
         test_utils::destroy(message_transmitter_state);
         test_utils::destroy(deny_list);
@@ -523,16 +562,15 @@ module token_messenger_minter::handle_receive_message_tests {
             1
         );
 
-        let stamped_receipt = handle_receive_message::handle_receive_message(
+        let ticket_and_message = handle_receive_message::handle_receive_message(
             receipt,
             &mut token_messenger_state,
-            &message_transmitter_state,
             &deny_list,
             &mut treasury,
             scenario.ctx()
         );
 
-        test_utils::destroy(stamped_receipt);
+        test_utils::destroy(ticket_and_message);
         test_utils::destroy(token_messenger_state);
         test_utils::destroy(message_transmitter_state);
         test_utils::destroy(deny_list);
@@ -567,16 +605,15 @@ module token_messenger_minter::handle_receive_message_tests {
             1
         );
 
-        let stamped_receipt = handle_receive_message::handle_receive_message(
+        let ticket_and_message = handle_receive_message::handle_receive_message(
             receipt,
             &mut token_messenger_state,
-            &message_transmitter_state,
             &deny_list,
             &mut treasury,
             scenario.ctx()
         );
 
-        test_utils::destroy(stamped_receipt);
+        test_utils::destroy(ticket_and_message);
         test_utils::destroy(token_messenger_state);
         test_utils::destroy(message_transmitter_state);
         test_utils::destroy(deny_list);
@@ -607,16 +644,15 @@ module token_messenger_minter::handle_receive_message_tests {
             1
         );
 
-        let stamped_receipt = handle_receive_message::handle_receive_message(
-                receipt,
+        let ticket_and_message = handle_receive_message::handle_receive_message(
+            receipt,
             &mut token_messenger_state,
-            &message_transmitter_state,
             &deny_list,
             &mut treasury,
             scenario.ctx()
         );
 
-        test_utils::destroy(stamped_receipt);
+        test_utils::destroy(ticket_and_message);
         test_utils::destroy(token_messenger_state);
         test_utils::destroy(message_transmitter_state);
         test_utils::destroy(deny_list);
@@ -646,16 +682,15 @@ module token_messenger_minter::handle_receive_message_tests {
             1
         );
 
-        let stamped_receipt = handle_receive_message::handle_receive_message(
+        let ticket_and_message = handle_receive_message::handle_receive_message(
             receipt,
             &mut token_messenger_state,
-            &message_transmitter_state,
             &deny_list_2,
             &mut treasury_2,
             scenario.ctx()
         );
 
-        test_utils::destroy(stamped_receipt);
+        test_utils::destroy(ticket_and_message);
         test_utils::destroy(token_messenger_state);
         test_utils::destroy(message_transmitter_state);
         test_utils::destroy(deny_list);
@@ -690,17 +725,16 @@ module token_messenger_minter::handle_receive_message_tests {
             1
         );
 
-        let stamped_receipt = handle_receive_message::handle_receive_message(
-                receipt,
+        let ticket_and_message = handle_receive_message::handle_receive_message(
+            receipt,
             &mut token_messenger_state,
-            &message_transmitter_state,
             &deny_list,
             &mut treasury,
             scenario.ctx()
         );
 
         test_utils::destroy(mint_cap);
-        test_utils::destroy(stamped_receipt);
+        test_utils::destroy(ticket_and_message);
         test_utils::destroy(token_messenger_state);
         test_utils::destroy(message_transmitter_state);
         test_utils::destroy(deny_list);
@@ -731,15 +765,14 @@ module token_messenger_minter::handle_receive_message_tests {
             1
             );
 
-            let stamped_receipt = handle_receive_message::handle_receive_message(
+            let ticket_and_message = handle_receive_message::handle_receive_message(
                 receipt,
                 &mut token_messenger_state,
-                &message_transmitter_state,
                 &deny_list,
                 &mut treasury,
                 scenario.ctx()
             );
-            test_utils::destroy(stamped_receipt);
+            test_utils::destroy(ticket_and_message);
         };
 
         test_utils::destroy(token_messenger_state);

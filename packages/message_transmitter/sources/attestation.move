@@ -47,7 +47,7 @@ module message_transmitter::attestation {
   /// https://github.com/MystenLabs/sui/blob/main/crates/sui-framework/packages/sui-framework/sources/crypto/ecdsa_k1.move#L35
   const KECCAK256_ID: u8 = 0;
 
-  // === Public-Package Functions ===
+  // === Public Functions ===
 
   /// Verifies that the attestation for a message, comprised of one or more concatenated 65-byte signatures, is valid.
   /// Reverts if invalid. A valid attestation requires the following conditions to be met:
@@ -60,7 +60,7 @@ module message_transmitter::attestation {
   /// 
   /// Based on Christian Lundkvist's Simple Multisig
   /// (https://github.com/christianlundkvist/simple-multisig/tree/560c463c8651e0a4da331bd8f245ccd2a48ab63d)
-  public(package) fun verify_attestation_signatures(message: vector<u8>, attestation: vector<u8>, state: &State) {
+  public fun verify_attestation_signatures(message: vector<u8>, attestation: vector<u8>, state: &State) {
     let signature_threshold = state.signature_threshold();
     assert!(attestation.length() == signature_threshold * SIGNATURE_LENGTH, EInvalidAttestationLength);
 

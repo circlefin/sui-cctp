@@ -315,16 +315,33 @@ const receiveSui = async (
   });
 
   // Add handle_receive_message call
-  const [stampedReceipt] = receiveMessageTx.moveCall({
+  const [stampReceiptTicketWithBurnMessage] = receiveMessageTx.moveCall({
     target: `${contractDefinition.tokenMessengerMinterId}::handle_receive_message::handle_receive_message`,
     arguments: [
       receipt, // Receipt object returned from receive_message call
       receiveMessageTx.object(contractDefinition.tokenMessengerMinterStateId), // token_messenger_minter state
-      receiveMessageTx.object(contractDefinition.messageTransmitterStateId), // message_transmitter state
       receiveMessageTx.object("0x403"), // deny list, fixed address
       receiveMessageTx.object(contractDefinition.treasuryId), // usdc treasury object Treasury<T>
     ],
     typeArguments: [`${contractDefinition.usdcId}::usdc::USDC`],
+  })
+
+  // Add deconstruct_stamp_receipt_ticket_with_burn_message call
+  const [stampReceiptTicket] = receiveMessageTx.moveCall({
+    target: `${contractDefinition.tokenMessengerMinterId}::handle_receive_message::deconstruct_stamp_receipt_ticket_with_burn_message`,
+    arguments: [
+      stampReceiptTicketWithBurnMessage
+    ]
+  });
+
+  // Add stamp_receipt call
+  const [stampedReceipt] = receiveMessageTx.moveCall({
+    target: `${contractDefinition.messageTransmitterId}::receive_message::stamp_receipt`,
+    arguments: [
+      stampReceiptTicket, // Receipt ticket returned from deconstruct_stamp_receipt_ticket_with_burn_message call
+      receiveMessageTx.object(contractDefinition.messageTransmitterStateId), // message_transmitter state
+    ],
+    typeArguments: [`${contractDefinition.tokenMessengerMinterId}::message_transmitter_authenticator::MessageTransmitterAuthenticator`],
   })
 
   // Add complete_receive_message call
