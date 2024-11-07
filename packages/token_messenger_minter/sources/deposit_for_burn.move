@@ -430,7 +430,7 @@ module token_messenger_minter::deposit_for_burn {
   /// Shared functionality between replace_deposit_for_burn and replace_deposit_for_burn_with_package_auth.
   /// Replaces a given BurnMessage if sender is the same as the original message sender.
   /// Returns the updated BurnMessage and Message.
-  entry fun replace_deposit_for_burn_shared(
+  fun replace_deposit_for_burn_shared(
     original_raw_message: vector<u8>,
     original_attestation: vector<u8>,
     new_destination_caller: Option<address>,
