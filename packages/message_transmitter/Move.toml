@@ -31,7 +31,7 @@ subdir = "packages/sui_extensions"
 rev = "d0904ae"
 
 [addresses]
-message_transmitter = "0x1"
+message_transmitter = "0x0"
 
 [dev-dependencies]
 

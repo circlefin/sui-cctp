@@ -24,7 +24,7 @@ module message_transmitter::version_control {
     use sui::vec_set::VecSet;
 
     /// The current version of the package.
-    const VERSION: u64 = 2;
+    const VERSION: u64 = 1;
 
     // === Errors ===
     const EIncompatibleVersion: u64 = 0;
