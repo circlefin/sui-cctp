@@ -39,8 +39,7 @@ subdir = "packages/sui_extensions"
 rev = "d0904ae"
 
 [addresses]
-message_transmitter = "0x1"
-token_messenger_minter = "0x2"
+token_messenger_minter = "0x0"
 
 [dev-dependencies]
 
