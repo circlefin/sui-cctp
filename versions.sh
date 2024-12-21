@@ -14,5 +14,6 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-export SUI_VERSION=mainnet-v1.30.1
-export SUI_VERSION_NUM=1.30.1
+export SUI_VERSION=mainnet-v1.37.3
+export FOUNDRY_VERSION=nightly-5a8bd893eeeeb9489ea66dd52a02eeaa580e3af0
+

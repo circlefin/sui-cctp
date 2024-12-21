@@ -15,13 +15,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+source versions.sh
 echo "Deploying evm-cctp-contracts contracts"
 
+FOUNDRY_SHORT_VERSION=$(echo ${FOUNDRY_VERSION} | cut -d '-' -f2 | cut -c1-7)
+
 # Check if foundry is installed
-if ! ~/.foundry/bin/forge -V; then
- curl -L https://foundry.paradigm.xyz | bash
- # 07-14-2023 - The version following this version breaks our build, so setting to this version for now.
- ~/.foundry/bin/foundryup --version nightly-d369d2486f85576eec4ca41d277391dfdae21ba7
+if [ ! -x ~/.foundry/bin/forge ] || ! ~/.foundry/bin/forge --version | grep ${FOUNDRY_SHORT_VERSION} ; then
+  curl -L https://foundry.paradigm.xyz | bash
+  ~/.foundry/bin/foundryup --install ${FOUNDRY_VERSION}
 fi
 
 cd evm-cctp-contracts
@@ -33,7 +35,7 @@ git submodule update --init --recursive
 yarn install
 
 # Build the anvil image
-docker build --no-cache -f Dockerfile -t foundry .
+docker build --no-cache --platform linux/amd64 --file Dockerfile --tag foundry --build-arg FOUNDRY_VERSION=${FOUNDRY_VERSION} .
 
 # Create the anvil container
 docker rm -f anvil || true
@@ -77,8 +79,7 @@ export DOMAIN=0
 ~/.foundry/bin/forge script ../scripts/evm-scripts/cctp_deploy.s.sol:DeployScript --rpc-url $RPC_URL_ETH --sender $SENDER --broadcast
 mkdir cctp-interfaces
 cp -R ./out/* ./cctp-interfaces
-~/.foundry/bin/forge script ../scripts/evm-scripts/usdc_deploy.s.sol:USDCDeployScript --rpc-url $RPC_URL_ETH --sender $SENDER --broadcast --force --use 0.6.12
+~/.foundry/bin/forge script ../scripts/evm-scripts/usdc_deploy.s.sol:USDCDeployScript --rpc-url $RPC_URL_ETH --sender $SENDER --broadcast
 mkdir usdc-interfaces
 cp -R ./out/* ./usdc-interfaces
-
 cd ..
