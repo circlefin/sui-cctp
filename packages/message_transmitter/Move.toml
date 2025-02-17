@@ -18,6 +18,7 @@
 name = "MessageTransmitter"
 edition = "2024.beta"
 license = "Apache 2.0"
+published-at = "0x4931e06dce648b3931f890035bd196920770e913e43e45990b383f6486fdd0a5"
 
 [dependencies.Sui]
 git = "https://github.com/MystenLabs/sui.git"
@@ -31,7 +32,7 @@ subdir = "packages/sui_extensions"
 rev = "d0904ae"
 
 [addresses]
-message_transmitter = "0x0"
+message_transmitter = "0x4931e06dce648b3931f890035bd196920770e913e43e45990b383f6486fdd0a5"
 
 [dev-dependencies]
 

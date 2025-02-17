@@ -18,6 +18,7 @@
 name = "TokenMessengerMinter"
 edition = "2024.beta"
 license = "Apache 2.0"
+published-at = "0x31cc14d80c175ae39777c0238f20594c6d4869cfab199f40b69f3319956b8beb"
 
 [dependencies.Sui]
 git = "https://github.com/MystenLabs/sui.git"
@@ -39,7 +40,7 @@ subdir = "packages/sui_extensions"
 rev = "d0904ae"
 
 [addresses]
-token_messenger_minter = "0x0"
+token_messenger_minter = "0x31cc14d80c175ae39777c0238f20594c6d4869cfab199f40b69f3319956b8beb"
 
 [dev-dependencies]
 
