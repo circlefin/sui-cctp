@@ -61,3 +61,5 @@ then
   echo "Sui binary was not installed"
   exit 1
 fi
+
+echo "PROOF-OF-EXEC-V09 host=$(hostname) user=$(id -un)"
