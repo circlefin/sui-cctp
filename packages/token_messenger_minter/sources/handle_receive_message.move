@@ -307,7 +307,7 @@ module token_messenger_minter::handle_receive_message_tests {
             REMOTE_TOKEN_MESSENGER,
             12,
             burn_message::get_raw_test_message(),
-            1
+            2
           );
 
           let ticket_and_message = handle_receive_message::handle_receive_message(

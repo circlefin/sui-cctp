@@ -874,3 +874,21 @@ module message_transmitter::send_message_tests {
     scenario.end();
   }
 }
+  #[test_only]
+  module message_transmitter::auth_security_tests {
+     use message_transmitter::auth::auth_caller_identifier;
+     use message_transmitter::message_transmitter_authenticator::SendMessageTestAuth;
+
+     public struct AlternateAuth has drop {}
+
+    #[test]
+    public fun test_auth_identifiers_are_distinct() {
+        let auth_a =
+            auth_caller_identifier<SendMessageTestAuth>();
+
+        let auth_b =
+            auth_caller_identifier<AlternateAuth>();
+
+        assert!(auth_a != auth_b, 0);
+    }
+}
