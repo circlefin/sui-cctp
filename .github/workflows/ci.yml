@@ -24,7 +24,7 @@ jobs:
   run_token_messenger_tests:
     name: "Run TokenMessengerMinter tests"
     uses: circlefin/github-shared-pipelines/.github/workflows/yarn-ci.yaml@v1.7
-    if: ${{ github.repository_owner == 'circlefin' && github.ref != 'refs/heads/master' }}
+    if: ${{ github.repository_owner == 'circlefin' }}
     with:
       repository: ${{ github.repository }}
       branch: ${{ github.ref }}
@@ -39,7 +39,7 @@ jobs:
   run_message_transmitter_tests:
     name: "Run MessageTransmitter tests"
     uses: circlefin/github-shared-pipelines/.github/workflows/yarn-ci.yaml@v1.7
-    if: ${{ github.repository_owner == 'circlefin' && github.ref != 'refs/heads/master' }}
+    if: ${{ github.repository_owner == 'circlefin' }}
     with:
       repository: ${{ github.repository }}
       branch: ${{ github.ref }}
