@@ -1,13 +1,13 @@
 # Copyright (c) 2024, Circle Internet Group, Inc. All rights reserved.
-# 
+#
 # SPDX-License-Identifier: Apache-2.0
-# 
+#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
-# 
+#
 # http://www.apache.org/licenses/LICENSE-2.0
-# 
+#
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -23,43 +23,180 @@ on:
 jobs:
   run_token_messenger_tests:
     name: "Run TokenMessengerMinter tests"
-    uses: circlefin/github-shared-pipelines/.github/workflows/yarn-ci.yaml@v1.7
+    uses: circlefin/github-shared-pipelines/.github/workflows/yarn-ci.yaml@v1
     if: ${{ github.repository_owner == 'circlefin' && github.ref != 'refs/heads/master' }}
     with:
       repository: ${{ github.repository }}
       branch: ${{ github.ref }}
-      node_version: "20.14.0"
+      node_version_file: scripts/.nvmrc
+      node_s3_cache_enabled: false
       install_dependencies_command: bash setup.sh
       run_command: |
-        sui move test --path packages/token_messenger_minter --coverage
-        sui move coverage summary --path packages/token_messenger_minter
-        coverage=$(sui move coverage summary --path packages/token_messenger_minter | grep "Move Coverage:" | grep -Eo "[0-9]+" | head -1)
+        source versions.sh
+        SUI="$(resolve_sui_or_fail packages/token_messenger_minter)" || exit 1
+        echo ">> token_messenger_minter using: $SUI"; "$SUI" -V || true
+        "$SUI" move test --path packages/token_messenger_minter --coverage
+        "$SUI" move coverage summary --path packages/token_messenger_minter
+        coverage=$("$SUI" move coverage summary --path packages/token_messenger_minter | grep "Move Coverage:" | grep -Eo "[0-9]+" | head -1)
         [[ $coverage -ge 99 ]] || { echo "Test Coverage is only ${coverage}%. Should be at least 99%"; exit 1; }
-      runner: small-spot
+      runner: small
   run_message_transmitter_tests:
     name: "Run MessageTransmitter tests"
-    uses: circlefin/github-shared-pipelines/.github/workflows/yarn-ci.yaml@v1.7
+    uses: circlefin/github-shared-pipelines/.github/workflows/yarn-ci.yaml@v1
     if: ${{ github.repository_owner == 'circlefin' && github.ref != 'refs/heads/master' }}
     with:
       repository: ${{ github.repository }}
       branch: ${{ github.ref }}
-      node_version: "20.14.0"
+      node_version_file: scripts/.nvmrc
+      node_s3_cache_enabled: false
       install_dependencies_command: bash setup.sh
       run_command: |
-        sui move test --path packages/message_transmitter --coverage
-        sui move coverage summary --path packages/message_transmitter
-        coverage=$(sui move coverage summary --path packages/message_transmitter | grep "Move Coverage:" | grep -Eo "[0-9]+" | head -1)
+        source versions.sh
+        SUI="$(resolve_sui_or_fail packages/message_transmitter)" || exit 1
+        echo ">> message_transmitter using: $SUI"; "$SUI" -V || true
+        "$SUI" move test --path packages/message_transmitter --coverage
+        "$SUI" move coverage summary --path packages/message_transmitter
+        coverage=$("$SUI" move coverage summary --path packages/message_transmitter | grep "Move Coverage:" | grep -Eo "[0-9]+" | head -1)
         [[ $coverage -ge 99 ]] || { echo "Test Coverage is only ${coverage}%. Should be at least 99%"; exit 1; }
-      runner: small-spot
+      runner: small
+  run_cctp_extensions_tests:
+    name: "Run CctpExtensions tests"
+    uses: circlefin/github-shared-pipelines/.github/workflows/yarn-ci.yaml@v1
+    if: ${{ github.repository_owner == 'circlefin' && github.ref != 'refs/heads/master' }}
+    with:
+      repository: ${{ github.repository }}
+      branch: ${{ github.ref }}
+      node_version_file: scripts/.nvmrc
+      node_s3_cache_enabled: false
+      install_dependencies_command: bash setup.sh
+      run_command: |
+        source versions.sh
+        SUI="$(resolve_sui_or_fail packages/cctp_extensions)" || exit 1
+        echo ">> cctp_extensions using: $SUI"; "$SUI" -V || true
+        "$SUI" move test --path packages/cctp_extensions
+      runner: small
+  run_message_transmitter_v2_tests:
+    name: "Run MessageTransmitterV2 tests"
+    uses: circlefin/github-shared-pipelines/.github/workflows/yarn-ci.yaml@v1
+    if: ${{ github.repository_owner == 'circlefin' && github.ref != 'refs/heads/master' }}
+    with:
+      repository: ${{ github.repository }}
+      branch: ${{ github.ref }}
+      node_version_file: scripts/.nvmrc
+      node_s3_cache_enabled: false
+      install_dependencies_command: bash setup.sh
+      run_command: |
+        source versions.sh
+        SUI="$(resolve_sui_or_fail packages/message_transmitter_v2)" || exit 1
+        echo ">> message_transmitter_v2 using: $SUI"; "$SUI" -V || true
+        "$SUI" move test --path packages/message_transmitter_v2 --coverage
+        "$SUI" move coverage summary --path packages/message_transmitter_v2
+        coverage=$("$SUI" move coverage summary --path packages/message_transmitter_v2 | grep "Move Coverage:" | grep -Eo "[0-9]+" | head -1)
+        [[ $coverage -ge 99 ]] || { echo "Test Coverage is only ${coverage}%. Should be at least 99%"; exit 1; }
+      runner: small
+  run_token_messenger_minter_v2_tests:
+    name: "Run TokenMessengerMinterV2 tests"
+    uses: circlefin/github-shared-pipelines/.github/workflows/yarn-ci.yaml@v1
+    if: ${{ github.repository_owner == 'circlefin' && github.ref != 'refs/heads/master' }}
+    with:
+      repository: ${{ github.repository }}
+      branch: ${{ github.ref }}
+      node_version_file: scripts/.nvmrc
+      node_s3_cache_enabled: false
+      install_dependencies_command: bash setup.sh
+      run_command: |
+        source versions.sh
+        SUI="$(resolve_sui_or_fail packages/token_messenger_minter_v2)" || exit 1
+        echo ">> token_messenger_minter_v2 using: $SUI"; "$SUI" -V || true
+        "$SUI" move test --path packages/token_messenger_minter_v2 --coverage
+        "$SUI" move coverage summary --path packages/token_messenger_minter_v2
+        coverage=$("$SUI" move coverage summary --path packages/token_messenger_minter_v2 | grep "Move Coverage:" | grep -Eo "[0-9]+" | head -1)
+        [[ $coverage -ge 99 ]] || { echo "Test Coverage is only ${coverage}%. Should be at least 99%"; exit 1; }
+      runner: small
+  run_stablecoin_handler_tests:
+    name: "Run StablecoinHandler tests"
+    uses: circlefin/github-shared-pipelines/.github/workflows/yarn-ci.yaml@v1
+    if: ${{ github.repository_owner == 'circlefin' && github.ref != 'refs/heads/master' }}
+    with:
+      repository: ${{ github.repository }}
+      branch: ${{ github.ref }}
+      node_version_file: scripts/.nvmrc
+      node_s3_cache_enabled: false
+      install_dependencies_command: bash setup.sh
+      run_command: |
+        source versions.sh
+        SUI="$(resolve_sui_or_fail packages/stablecoin_handler)" || exit 1
+        echo ">> stablecoin_handler using: $SUI"; "$SUI" -V || true
+        "$SUI" move test --path packages/stablecoin_handler --coverage
+        "$SUI" move coverage summary --path packages/stablecoin_handler
+        coverage=$("$SUI" move coverage summary --path packages/stablecoin_handler | grep "Move Coverage:" | grep -Eo "[0-9]+" | head -1)
+        [[ $coverage -ge 99 ]] || { echo "Test Coverage is only ${coverage}%. Should be at least 99%"; exit 1; }
+      runner: small
+  run_e2e_tests:
+    name: "Run E2E tests"
+    uses: circlefin/github-shared-pipelines/.github/workflows/yarn-ci.yaml@v1
+    if: ${{ github.repository_owner == 'circlefin' && github.ref != 'refs/heads/master' }}
+    with:
+      repository: ${{ github.repository }}
+      branch: ${{ github.ref }}
+      node_version_file: scripts/.nvmrc
+      node_project_path: scripts
+      corepack_enabled: true
+      install_dependencies_command: |
+        yarn install --immutable
+        cd ..
+        bash setup.sh
+      start_containers: true
+      run_command: |
+        export CI=true
+        # Initialize ~/.sui/sui_config/ so the deploy script's
+        # `sui client envs --json` call has a config to read.
+        sui genesis
+        # Warm the frozen-V1 Sui framework before deploying V1. The frozen 1.37.3
+        # `client publish` git-clones the framework (~19k files) during the deploy's
+        # SDK-idle publish phase, which lets the node close the reused RPC connection
+        # (the deploy then fails at init_state with "fetch failed" / socket closed).
+        # Building V1 here fetches the same clone up front, so the deploy reuses the
+        # ~/.move cache and stays fast.
+        #
+        # V2 needs the same treatment. Its Move.lock pins the framework as a git
+        # source ([pinned.mainnet.Sui] at rev d50b7888) — a *different* rev from
+        # V1's b023ef8 — so the V1 warm does not populate that cache entry.
+        # Without warming it the ~19k-file clone lands inside deploy-local:v2 and
+        # produces the identical failure: "SimulationError: fetch failed" at
+        # message_transmitter_v2's init_state.
+        ./run.sh build --version 1
+        ./run.sh build --version 2
+        cd scripts
+        cp .env.example .env
+        # Each deploy self-configures the localnet manifests and restores them
+        # afterward (see deploy.ts), so no configure_manifest.sh wrapping here.
+        yarn deploy-local:v1
+        yarn test-local:v1
+        # Publish + configure the V2 packages against the same local node, then
+        # run the V2 bridge E2E (Sui-only; EVM messages synthesized in TS).
+        yarn deploy-local:v2
+        yarn test-local:v2
+      runner: small-dind
   scan:
-    needs: 
+    needs:
       - run_token_messenger_tests
       - run_message_transmitter_tests
+      - run_cctp_extensions_tests
+      - run_message_transmitter_v2_tests
+      - run_token_messenger_minter_v2_tests
+      - run_stablecoin_handler_tests
+      - run_e2e_tests
     if: github.event_name == 'pull_request'
     uses: circlefin/circle-public-github-workflows/.github/workflows/pr-scan.yaml@v1
   release-sbom:
-      needs:
-        - run_token_messenger_tests
-        - run_message_transmitter_tests
-      if: github.event_name == 'push'
-      uses: circlefin/circle-public-github-workflows/.github/workflows/attach-release-assets.yaml@v1
+    needs:
+      - run_token_messenger_tests
+      - run_message_transmitter_tests
+      - run_cctp_extensions_tests
+      - run_message_transmitter_v2_tests
+      - run_token_messenger_minter_v2_tests
+      - run_stablecoin_handler_tests
+      - run_e2e_tests
+    if: github.event_name == 'push'
+    uses: circlefin/circle-public-github-workflows/.github/workflows/attach-release-assets.yaml@v1

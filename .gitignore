@@ -1,9 +1,11 @@
 node_modules/
 build/
+packages/legacy-v2/
 packages/**/.coverage_map.mvcov
 packages/**/.trace
 scripts/.env
 scripts/test_config.env
+scripts/test_config.*.env
 scripts/report/
 scripts/.yarn/*
 !scripts/.yarn/patches
@@ -12,3 +14,8 @@ scripts/.yarn/*
 !scripts/.yarn/sdks
 !scripts/.yarn/versions
 sui-node.log
+bin/
+traces/
+Pub.*.toml
+packages/**/Published.toml
+scripts/deploy.*.env

@@ -14,5 +14,8 @@
 # configuration for the start script
 export DOCROOT=$(dirname "${BASH_SOURCE[0]}")
 
-echo "Stopping and removing EVM Docker containers..."
-docker stop anvil
+echo "Stopping anvil container (if running)..."
+docker stop anvil 2>/dev/null || true
+
+echo "Stopping sui local node (if running)..."
+./run.sh stop_network

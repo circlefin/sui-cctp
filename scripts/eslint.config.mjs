@@ -9,30 +9,37 @@ import { FlatCompat } from "@eslint/eslintrc";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const compat = new FlatCompat({
-    baseDirectory: __dirname,
-    recommendedConfig: js.configs.recommended,
-    allConfig: js.configs.all
+  baseDirectory: __dirname,
+  recommendedConfig: js.configs.recommended,
+  allConfig: js.configs.all,
 });
 
-export default [{
+export default [
+  {
     ignores: ["build/*", "node_modules/*", "**/yarn.lock", ".yarn/*"],
-}, ...compat.extends("eslint:recommended", "plugin:@typescript-eslint/recommended"), {
+  },
+  ...compat.extends(
+    "eslint:recommended",
+    "plugin:@typescript-eslint/recommended",
+  ),
+  {
     plugins: {
-        "@typescript-eslint": typescriptEslint,
+      "@typescript-eslint": typescriptEslint,
     },
 
     languageOptions: {
-        globals: {
-            ...globals.node,
-        },
+      globals: {
+        ...globals.node,
+      },
 
-        parser: tsParser,
-        ecmaVersion: "latest",
-        sourceType: "module",
+      parser: tsParser,
+      ecmaVersion: "latest",
+      sourceType: "module",
     },
 
     rules: {
-        "@typescript-eslint/no-explicit-any": "off",
-        "@typescript-eslint/no-non-null-assertion": "off",
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-non-null-assertion": "off",
     },
-}];
+  },
+];

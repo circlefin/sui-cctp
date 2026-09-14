@@ -2,7 +2,7 @@
 
 [move]
 version = 3
-manifest_digest = "CB25F2D03D23A7FBA06D43DE34CF9A1195977EFF24903798A4BDFE471573213F"
+manifest_digest = "2081CE555FCE34C5FF51B25446A3303C42128DE62A9A0D8FD9F5943DC6EC8332"
 deps_digest = "F9B494B64F0615AED0E98FC12A85B85ECD2BC5185C22D30E7F67786BB52E507C"
 dependencies = [
   { id = "MessageTransmitter", name = "MessageTransmitter" },
@@ -22,11 +22,11 @@ dependencies = [
 
 [[move.package]]
 id = "MoveStdlib"
-source = { git = "https://github.com/MystenLabs/sui.git", rev = "a4185da5659d8d299d34e1bb2515ff1f7e32a20a", subdir = "crates/sui-framework/packages/move-stdlib" }
+source = { git = "https://github.com/MystenLabs/sui.git", rev = "b023ef895412b22a1db9490d266e96aa5925a890", subdir = "crates/sui-framework/packages/move-stdlib" }
 
 [[move.package]]
 id = "Sui"
-source = { git = "https://github.com/MystenLabs/sui.git", rev = "a4185da5659d8d299d34e1bb2515ff1f7e32a20a", subdir = "crates/sui-framework/packages/sui-framework" }
+source = { git = "https://github.com/MystenLabs/sui.git", rev = "b023ef895412b22a1db9490d266e96aa5925a890", subdir = "crates/sui-framework/packages/sui-framework" }
 
 dependencies = [
   { id = "MoveStdlib", name = "MoveStdlib" },
@@ -34,7 +34,7 @@ dependencies = [
 
 [[move.package]]
 id = "stablecoin"
-source = { git = "https://github.com/circlefin/stablecoin-sui.git", rev = "d0904ae", subdir = "packages/stablecoin" }
+source = { git = "https://github.com/circlefin/stablecoin-sui.git", rev = "23fff2ed82a7fdc26e408a56553b1e1d0ba7b06f", subdir = "packages/stablecoin" }
 
 dependencies = [
   { id = "Sui", name = "Sui" },
@@ -43,13 +43,13 @@ dependencies = [
 
 [[move.package]]
 id = "sui_extensions"
-source = { git = "https://github.com/circlefin/stablecoin-sui.git", rev = "d0904ae", subdir = "packages/sui_extensions" }
+source = { git = "https://github.com/circlefin/stablecoin-sui.git", rev = "23fff2ed82a7fdc26e408a56553b1e1d0ba7b06f", subdir = "packages/sui_extensions" }
 
 dependencies = [
   { id = "Sui", name = "Sui" },
 ]
 
 [move.toolchain-version]
-compiler-version = "1.38.0"
+compiler-version = "1.37.3"
 edition = "2024.beta"
 flavor = "sui"

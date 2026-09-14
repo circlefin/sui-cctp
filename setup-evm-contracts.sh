@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright (c) 2024, Circle Internet Group, Inc. All rights reserved.
+# Copyright (c) 2026, Circle Internet Group, Inc. All rights reserved.
 # 
 # SPDX-License-Identifier: Apache-2.0
 # 
@@ -21,7 +21,7 @@ echo "Deploying evm-cctp-contracts contracts"
 if ! ~/.foundry/bin/forge -V; then
  curl -L https://foundry.paradigm.xyz | bash
  # 07-14-2023 - The version following this version breaks our build, so setting to this version for now.
- ~/.foundry/bin/foundryup --version nightly-d369d2486f85576eec4ca41d277391dfdae21ba7
+ ~/.foundry/bin/foundryup --install nightly-d369d2486f85576eec4ca41d277391dfdae21ba7
 fi
 
 cd evm-cctp-contracts

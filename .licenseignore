@@ -1,3 +1,5 @@
 pkg:npm/%40bcoe/v8-coverage
 pkg:npm/sha.js
 pkg:npm/sprintf-js
+pkg:npm/elliptic
+pkg:npm/%40protobuf-ts/runtime

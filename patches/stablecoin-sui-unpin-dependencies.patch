@@ -1,0 +1,48 @@
+diff --git a/packages/stablecoin/Move.toml b/packages/stablecoin/Move.toml
+index c741cef..064cff9 100644
+--- a/packages/stablecoin/Move.toml
++++ b/packages/stablecoin/Move.toml
+@@ -19,11 +19,6 @@ name = "stablecoin"
+ edition = "2024.beta"
+ license = "Apache 2.0"
+ 
+-[dependencies.Sui]
+-git = "https://github.com/MystenLabs/sui.git"
+-subdir = "crates/sui-framework/packages/sui-framework"
+-rev = "a4185da5659d8d299d34e1bb2515ff1f7e32a20a"
+-
+ [dependencies.sui_extensions]
+ local = "../sui_extensions"
+ 
+diff --git a/packages/sui_extensions/Move.toml b/packages/sui_extensions/Move.toml
+index cb3d78f..9413b8d 100644
+--- a/packages/sui_extensions/Move.toml
++++ b/packages/sui_extensions/Move.toml
+@@ -19,11 +19,6 @@ name = "sui_extensions"
+ edition = "2024.beta"
+ license = "Apache 2.0"
+ 
+-[dependencies.Sui]
+-git = "https://github.com/MystenLabs/sui.git"
+-subdir = "crates/sui-framework/packages/sui-framework"
+-rev = "a4185da5659d8d299d34e1bb2515ff1f7e32a20a"
+-
+ [addresses]
+ sui_extensions = "0x0"
+ 
+diff --git a/packages/usdc/Move.toml b/packages/usdc/Move.toml
+index 79afe98..b350611 100644
+--- a/packages/usdc/Move.toml
++++ b/packages/usdc/Move.toml
+@@ -19,11 +19,6 @@ name = "usdc"
+ edition = "2024.beta"
+ license = "Apache 2.0"
+ 
+-[dependencies.Sui]
+-git = "https://github.com/MystenLabs/sui.git"
+-subdir = "crates/sui-framework/packages/sui-framework"
+-rev = "a4185da5659d8d299d34e1bb2515ff1f7e32a20a"
+-
+ [dependencies.stablecoin]
+ local = "../stablecoin"
+ 
