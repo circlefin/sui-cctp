@@ -31,12 +31,12 @@ local = "../message_transmitter"
 [dependencies.stablecoin]
 git = "https://github.com/circlefin/stablecoin-sui.git"
 subdir = "packages/stablecoin"
-rev = "d0904ae"
+rev = "23fff2ed82a7fdc26e408a56553b1e1d0ba7b06f"
 
 [dependencies.sui_extensions]
 git = "https://github.com/circlefin/stablecoin-sui.git"
 subdir = "packages/sui_extensions"
-rev = "d0904ae"
+rev = "23fff2ed82a7fdc26e408a56553b1e1d0ba7b06f"
 
 [addresses]
 message_transmitter = "0x1"

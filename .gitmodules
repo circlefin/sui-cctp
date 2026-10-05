@@ -1,6 +1,10 @@
 [submodule "stablecoin-sui"]
 	path = stablecoin-sui
 	url = https://github.com/circlefin/stablecoin-sui.git
+	# setup.sh applies patches/stablecoin-sui-unpin-dependencies.patch on top of the
+	# pinned rev, which leaves the submodule working tree permanently modified.
+	# `ignore = dirty` stops git status/diff from flagging that expected change.
+	ignore = dirty
 [submodule "evm-cctp-contracts"]
 	path = evm-cctp-contracts
 	url = https://github.com/circlefin/evm-cctp-contracts.git

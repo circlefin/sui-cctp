@@ -7,26 +7,34 @@
     "url": "git+ssh://git@github.com/circlefin/sui-cctp.git"
   },
   "license": "Apache-2.0",
+  "type": "module",
   "scripts": {
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint .",
-    "deploy": "TS_NODE_COMPILER_OPTIONS='{\"module\": \"commonjs\" }' node -r ts-node/register -r dotenv/config 'sui-scripts/deploy.ts'",
-    "deploy-local": "FULLNODE_PORT=7000 FAUCET_PORT=7123 LINK_EVM_CONTRACTS=true && yarn deploy",
-    "deploy-ci": "FULLNODE_PORT=9000 FAUCET_PORT=9123 LINK_EVM_CONTRACTS=true && yarn deploy",
-    "deploy-skip-linking-local": "FULLNODE_PORT=7000 FAUCET_PORT=7123 LINK_EVM_CONTRACTS=false && yarn deploy",
-    "deploy-skip-linking-ci": "FULLNODE_PORT=9000 FAUCET_PORT=9123 LINK_EVM_CONTRACTS=false && yarn deploy",
-    "test": "yarn jest --runInBand",
-    "test-local": "FULLNODE_PORT=7000 FAUCET_PORT=7123 && yarn test",
-    "test-ci": "FULLNODE_PORT=9000 FAUCET_PORT=9123 && yarn test",
-    "deposit-for-burn-example": "TS_NODE_COMPILER_OPTIONS='{\"module\": \"commonjs\" }' node -r ts-node/register -r dotenv/config 'sui-scripts/depositForBurn.ts'",
-    "receive-message-example": "TS_NODE_COMPILER_OPTIONS='{\"module\": \"commonjs\" }' node -r ts-node/register -r dotenv/config 'sui-scripts/receiveMessage.ts'"
+    "deploy": "node --import tsx --require dotenv/config 'sui/deploy.ts'",
+    "deploy-local:v1": "FULLNODE_PORT=9001 FAUCET_PORT=9123 LINK_EVM_CONTRACTS=true yarn deploy --deploy-version 1",
+    "deploy-local:v2": "FULLNODE_PORT=9001 FAUCET_PORT=9123 LINK_EVM_CONTRACTS=false yarn deploy --deploy-version 2",
+    "deploy-skip-linking-local:v1": "FULLNODE_PORT=9001 FAUCET_PORT=9123 LINK_EVM_CONTRACTS=false yarn deploy --deploy-version 1",
+    "deploy-remote:v2": "node --import tsx 'sui/deploy.ts' --deploy-version 2",
+    "test": "NODE_OPTIONS=--experimental-vm-modules yarn jest --runInBand",
+    "test-local": "FULLNODE_PORT=9001 FAUCET_PORT=9123 NODE_OPTIONS=--experimental-vm-modules yarn jest --runInBand",
+    "test-local:v1": "FULLNODE_PORT=9001 FAUCET_PORT=9123 NODE_OPTIONS=--experimental-vm-modules yarn jest --runInBand test/e2e.test.ts",
+    "test-local:v2": "FULLNODE_PORT=9001 FAUCET_PORT=9123 NODE_OPTIONS=--experimental-vm-modules yarn jest --runInBand test/txAdapter.test.ts test/messageV2.test.ts test/executeTransactionWithRetry.test.ts test/e2e.v2.test.ts test/upgrade.e2e.v2.test.ts",
+    "deposit-for-burn-example:v1": "node --import tsx --require dotenv/config 'sui/depositForBurn.ts'",
+    "receive-message-example:v1": "node --import tsx --require dotenv/config 'sui/receiveMessage.ts'",
+    "deposit-for-burn-example:v2": "node --import tsx --require dotenv/config 'sui/depositForBurnV2.ts'",
+    "receive-message-example:v2": "node --import tsx --require dotenv/config 'sui/receiveMessageV2.ts'",
+    "upgrade:deposit-cap": "node --import tsx --require dotenv/config 'sui/upgrade/depositUpgradeCap.ts'",
+    "upgrade:package": "node --import tsx --require dotenv/config 'sui/upgrade/upgrade.ts'",
+    "upgrade:migrate": "node --import tsx --require dotenv/config 'sui/upgrade/upgradeMigration.ts'",
+    "upgrade:v2": "node --import tsx --require dotenv/config 'sui/upgrade/migrate.ts'"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.1.0",
     "@eslint/js": "^9.7.0",
     "@jest/globals": "^29.7.0",
-    "@mysten/sui": "^1.0.3",
+    "@mysten/sui": "2.22.1",
     "@types/chai": "^4.3.16",
     "@types/jest": "^29.5.12",
     "@types/lodash": "^4.17.7",
@@ -47,13 +55,19 @@
     "prettier": "^3.2.5",
     "prettier-eslint": "^16.3.0",
     "ts-jest": "^29.2.4",
-    "ts-node": "^10.9.2",
+    "tsx": "^4.19.2",
     "typescript": "^5.4.5",
     "wait-for-expect": "^3.0.2",
-    "web3": "^4.11.1"
+    "web3": "^4.11.1",
+    "yup": "^1.4.0"
   },
   "engines": {
     "node": "20.14.0"
   },
-  "packageManager": "yarn@3.2.2"
+  "packageManager": "yarn@3.2.2",
+  "resolutions": {
+    "cipher-base": "1.0.5",
+    "pbkdf2": "3.1.3",
+    "sha.js": "2.4.12"
+  }
 }
