@@ -725,7 +725,7 @@ module message_transmitter::receive_message_tests {
     let mt_state = setup_state(&mut scenario);
 
     // Create receipt where the recipient is a user address
-    let receipt = receive_message::create_receipt(USER, USER, 0, @0x1, 7384, x"1234", 1);
+    let receipt = receive_message::create_receipt(USER, USER, 0, @0x1, 7384, x"1234", version_control::current_version());
     let auth = message_transmitter_authenticator::new();
     let stamp_receipt_ticket = receive_message::create_stamp_receipt_ticket(auth, receipt);
 
@@ -808,7 +808,7 @@ module message_transmitter::receive_message_tests {
   public fun test_complete_receive_message_revert_incompatible_state_version() {
     let mut scenario = test_scenario::begin(USER);
     let mut mt_state = setup_state(&mut scenario);
-    let receipt = receive_message::create_receipt(USER, auth_caller_identifier<SendMessageTestAuth>(), 0, USER, 7384, x"1234", 1);
+    let receipt = receive_message::create_receipt(USER, auth_caller_identifier<SendMessageTestAuth>(), 0, USER, 7384, x"1234", version_control::current_version());
     let auth = message_transmitter_authenticator::new();
     let stamp_receipt_ticket = receive_message::create_stamp_receipt_ticket(auth, receipt);
 
